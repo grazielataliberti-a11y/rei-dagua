@@ -149,6 +149,17 @@ function servidorAtivo() {
   return Boolean(apiUrl());
 }
 
+function temMovimento(dados) {
+  return Boolean(
+    dados.clientes.length ||
+    dados.vendas.length ||
+    dados.receitas.length ||
+    dados.despesas.length ||
+    dados.lancamentos.length ||
+    (dados.produtos || []).some((p) => Number(p.estoque) > 0)
+  );
+}
+
 function marcarServidor(ok) {
   state.servidorOk = ok;
   const el = document.getElementById("status-servidor");
@@ -171,8 +182,8 @@ async function carregar() {
     const res = await fetch(apiUrl() + "/api/dados", { headers: apiHeaders() });
     if (!res.ok) throw new Error("falha");
     const remoto = normalizarDados(await res.json());
-    const remotoVazio = !remoto.clientes.length && !remoto.vendas.length && !remoto.produtos.length;
-    const localTem = local.clientes.length || local.vendas.length || (local.produtos || []).some((p) => Number(p.estoque) > 0);
+    const remotoVazio = !temMovimento(remoto);
+    const localTem = temMovimento(local);
     if (remotoVazio && localTem) {
       await salvarRemoto(local);
       marcarServidor(true);
