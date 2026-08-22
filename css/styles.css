@@ -86,6 +86,13 @@ h1, h2, .serif { font-family: "Libre Baskerville", Georgia, serif; }
 .nav-ico { width: 1.4em; text-align: center; }
 .lock { margin-left: auto; font-size: 12px; }
 body.admin-on .lock { display: none; }
+.server-status {
+  margin: 10px 12px 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.server-status.ok { color: var(--ok); }
 .nav-caret { margin-left: auto; font-size: 12px; opacity: .7; }
 .nav-group.open .nav-caret { transform: rotate(180deg); }
 .sub-nav {

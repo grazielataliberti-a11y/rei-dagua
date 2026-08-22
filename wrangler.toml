@@ -1,0 +1,7 @@
+name = "rei-dagua-api"
+main = "worker.js"
+compatibility_date = "2026-08-22"
+
+[[kv_namespaces]]
+binding = "DADOS"
+id = "0d0208b223e845ce846a8455939d61f9"

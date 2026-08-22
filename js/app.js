@@ -112,30 +112,103 @@ function garantirBanco(data) {
   return data;
 }
 
-function load() {
+function normalizarDados(data) {
+  data.clientes ||= [];
+  data.produtos ||= [];
+  data.vendas ||= [];
+  garantirBanco(data);
+  data.produtos.forEach((p) => {
+    if (p.estoque == null || p.estoque === "") p.estoque = 0;
+    p.estoque = Number(p.estoque);
+  });
+  return data;
+}
+
+function loadLocal() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return seed();
-    const data = JSON.parse(raw);
-    data.clientes ||= [];
-    data.produtos ||= [];
-    data.vendas ||= [];
-    garantirBanco(data);
-    data.produtos.forEach((p) => {
-      if (p.estoque == null || p.estoque === "") p.estoque = 0;
-      p.estoque = Number(p.estoque);
-    });
-    return data;
+    return normalizarDados(JSON.parse(raw));
   } catch {
     return seed();
   }
 }
 
-function save(db) {
-  localStorage.setItem(KEY, JSON.stringify(db));
+function apiUrl() {
+  return String(window.REIDAGUA_API || "").replace(/\/$/, "");
 }
 
-let db = load();
+function servidorAtivo() {
+  return Boolean(apiUrl());
+}
+
+function marcarServidor(ok) {
+  state.servidorOk = ok;
+  const el = document.getElementById("status-servidor");
+  if (!el) return;
+  el.textContent = !servidorAtivo()
+    ? "Dados neste aparelho"
+    : ok
+      ? "Salvo no servidor"
+      : "Servidor offline";
+  el.classList.toggle("ok", Boolean(ok));
+}
+
+async function carregar() {
+  const local = loadLocal();
+  if (!servidorAtivo()) {
+    marcarServidor(false);
+    return local;
+  }
+  try {
+    const res = await fetch(apiUrl() + "/api/dados");
+    if (!res.ok) throw new Error("falha");
+    const remoto = normalizarDados(await res.json());
+    const remotoVazio = !remoto.clientes.length && !remoto.vendas.length && !remoto.produtos.length;
+    const localTem = local.clientes.length || local.vendas.length || (local.produtos || []).some((p) => Number(p.estoque) > 0);
+    if (remotoVazio && localTem) {
+      await salvarRemoto(local);
+      marcarServidor(true);
+      return local;
+    }
+    if (remotoVazio) {
+      const inicial = seed();
+      await salvarRemoto(inicial);
+      localStorage.setItem(KEY, JSON.stringify(inicial));
+      marcarServidor(true);
+      return inicial;
+    }
+    localStorage.setItem(KEY, JSON.stringify(remoto));
+    marcarServidor(true);
+    return remoto;
+  } catch {
+    marcarServidor(false);
+    toast("Servidor offline. Usando os dados deste aparelho.");
+    return local;
+  }
+}
+
+async function salvarRemoto(dados) {
+  const res = await fetch(apiUrl() + "/api/dados", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados)
+  });
+  if (!res.ok) throw new Error("falha ao salvar");
+}
+
+function save(dados) {
+  localStorage.setItem(KEY, JSON.stringify(dados));
+  if (!servidorAtivo()) return;
+  salvarRemoto(dados)
+    .then(() => marcarServidor(true))
+    .catch(() => {
+      marcarServidor(false);
+      toast("Não foi possível gravar no servidor");
+    });
+}
+
+let db = seed();
 
 function toast(msg) {
   document.querySelector(".toast")?.remove();
@@ -1790,4 +1863,9 @@ function init() {
   setView("clientes");
 }
 
-init();
+async function iniciar() {
+  db = await carregar();
+  init();
+}
+
+iniciar();

@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: rei-dagua-api
+    runtime: node
+    plan: free
+    buildCommand: "echo ready"
+    startCommand: node server/index.js
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
