@@ -1,0 +1,5 @@
+*.xlsx
+*.jfif
+ANALISE*
+node_modules
+.git

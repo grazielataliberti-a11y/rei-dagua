@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0B3D8C" />
+  <title>Rei D'Água — Cadastro de Clientes</title>
+  <link rel="icon" href="assets/favicon.jpg" type="image/jpeg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Libre+Baskerville:wght@700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <img src="assets/logo-header.jpg" alt="Rei D'Água — Água 100% mineral" />
+      </div>
+      <nav class="side-nav" id="side-nav">
+        <button type="button" data-view="inicio" class="nav-btn">
+          <span class="nav-ico">⌂</span> Início <span class="lock">🔒</span>
+        </button>
+        <button type="button" data-view="clientes" class="nav-btn active">
+          <span class="nav-ico">👤</span> Clientes
+        </button>
+        <button type="button" data-view="vendas" class="nav-btn">
+          <span class="nav-ico">🛒</span> Vendas
+        </button>
+        <button type="button" data-view="estoque" class="nav-btn">
+          <span class="nav-ico">📦</span> Estoque
+        </button>
+        <button type="button" data-view="produtos" class="nav-btn">
+          <span class="nav-ico">💧</span> Produtos
+        </button>
+        <button type="button" data-view="banco" class="nav-btn">
+          <span class="nav-ico">🏦</span> Banco <span class="lock">🔒</span>
+        </button>
+        <button type="button" data-view="receitas" class="nav-btn">
+          <span class="nav-ico">💵</span> Receitas <span class="lock">🔒</span>
+        </button>
+        <button type="button" data-view="despesas" class="nav-btn">
+          <span class="nav-ico">📄</span> Despesas <span class="lock">🔒</span>
+        </button>
+        <div class="nav-group" id="grupo-relatorios">
+          <button type="button" class="nav-btn" id="btn-relatorios-toggle" aria-expanded="false">
+            <span class="nav-ico">📊</span> Relatórios <span class="lock">🔒</span>
+            <span class="nav-caret">▾</span>
+          </button>
+          <div class="sub-nav">
+            <button type="button" data-view="relatorios" data-tipo-relatorio="cliente" class="nav-btn sub-btn">Relatório cliente</button>
+            <button type="button" data-view="relatorios" data-tipo-relatorio="lojista" class="nav-btn sub-btn">Relatório lojista</button>
+          </div>
+        </div>
+        <button type="button" class="nav-btn" id="btn-sair-admin" hidden>Sair do administrador</button>
+      </nav>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <button type="button" class="icon-btn menu-btn" id="menu-toggle" aria-label="Abrir menu">☰</button>
+        <img class="top-logo" src="assets/favicon.jpg" alt="" />
+      </header>
+      <main class="content" id="conteudo"></main>
+      <footer class="page-foot">
+        <p class="slogan">QUALIDADE QUE COROA SUA ESCOLHA</p>
+        <div class="foot-contacts">
+          <a class="foot-item" href="https://wa.me/5511960408737" target="_blank" rel="noopener">
+            <span class="foot-ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 3.2c-4.7 0-8.5 3.8-8.5 8.5 0 1.5.4 2.9 1.1 4.1L3.4 20.6l4.9-1.3c1.2.6 2.5 1 3.7 1 4.7 0 8.5-3.8 8.5-8.5S16.7 3.2 12 3.2zm0 15.4c-1.2 0-2.3-.3-3.3-.9l-.2-.1-2.9.8.8-2.8-.2-.3c-.6-1-1-2.2-1-3.4 0-3.8 3.1-6.8 6.8-6.8s6.8 3.1 6.8 6.8-3.1 6.8-6.8 6.8zm3.7-5.1c-.2-.1-1.2-.6-1.4-.7-.2-.1-.3-.1-.5.1l-.7.8c-.1.2-.3.2-.5.1-1-.4-1.9-1.3-2.3-2.2-.1-.2 0-.3.1-.5l.4-.5c.1-.1.1-.3.1-.4 0-.1 0-.3-.1-.4l-.6-1.4c-.2-.4-.3-.4-.5-.4h-.4c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 1.9s.8 2.2.9 2.3c.1.2 1.6 2.5 3.8 3.4 1.4.6 1.9.6 2.6.5.4-.1 1.2-.5 1.4-1 .2-.5.2-.9.1-1 0-.1-.2-.2-.4-.3z" fill="currentColor"/></svg>
+            </span>
+            <span>WHATSAPP (11) 96040-8737</span>
+          </a>
+          <a class="foot-item" href="tel:+551134126902">
+            <span class="foot-ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M7.2 3.5h3.1c.4 0 .8.3.9.7l.7 2.6c.1.4 0 .8-.3 1.1L10 9.5c1.2 2.3 3.2 4.2 5.5 5.4l1.6-1.6c.3-.3.7-.4 1.1-.3l2.6.7c.4.1.7.5.7.9v3.1c0 .5-.4.9-.9.9C11.4 20.6 3.4 12.6 3.4 4.4c0-.5.4-.9.9-.9h2.9z" fill="currentColor"/></svg>
+            </span>
+            <span>TELEFONE (11) 3412-6902</span>
+          </a>
+          <span class="foot-item">
+            <span class="foot-ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 3.5c-3.4 0-6.2 2.7-6.2 6.1 0 4.6 6.2 10.9 6.2 10.9s6.2-6.3 6.2-10.9c0-3.4-2.8-6.1-6.2-6.1zm0 8.2a2.1 2.1 0 1 1 0-4.2 2.1 2.1 0 0 1 0 4.2z" fill="currentColor"/></svg>
+            </span>
+            <span>RUA ITAPEVA, 158 — BAETA NEVES<br />SÃO BERNARDO DO CAMPO — SP</span>
+          </span>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <nav class="bottom-nav" id="bottom-nav">
+    <button type="button" data-view="inicio"><span>⌂</span>Início</button>
+    <button type="button" data-view="clientes" class="active"><span>👤</span>Clientes</button>
+    <button type="button" data-view="vendas"><span>🛒</span>Vendas</button>
+    <button type="button" data-view="estoque"><span>📦</span>Estoque</button>
+    <button type="button" data-view="produtos"><span>💧</span>Produtos</button>
+    <button type="button" data-view="banco"><span>🏦</span>Banco</button>
+    <button type="button" data-view="receitas"><span>💵</span>Receitas</button>
+    <button type="button" data-view="despesas"><span>📄</span>Despesas</button>
+    <button type="button" data-view="relatorios"><span>📊</span>Relatórios</button>
+  </nav>
+
+  <div class="overlay" id="overlay"></div>
+  <div class="login-modal" id="login-modal" role="dialog" aria-labelledby="login-titulo">
+    <form class="login-box" id="form-login">
+      <img src="assets/logo-header.jpg" alt="Rei D'Água" />
+      <h2 id="login-titulo">Acesso do administrador</h2>
+      <p>Início, banco, receitas, despesas e relatórios pedem senha.</p>
+      <label for="login-senha">Senha</label>
+      <input id="login-senha" type="password" autocomplete="current-password" required />
+      <p class="help erro" id="login-erro"></p>
+      <div class="actions">
+        <button class="btn btn-navy" type="submit">Entrar</button>
+        <button class="btn btn-ghost" type="button" id="login-cancelar">Cancelar</button>
+      </div>
+    </form>
+  </div>
+  <script src="js/app.js"></script>
+</body>
+</html>
