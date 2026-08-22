@@ -3,6 +3,7 @@ node_modules/
 Thumbs.db
 .netlify/
 .vercel/
+.wrangler/
 *.log
 server/data/
 *.db

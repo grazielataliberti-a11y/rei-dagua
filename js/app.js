@@ -138,6 +138,13 @@ function apiUrl() {
   return String(window.REIDAGUA_API || "").replace(/\/$/, "");
 }
 
+function apiHeaders(extra) {
+  const headers = { ...(extra || {}) };
+  const chave = window.REIDAGUA_CHAVE;
+  if (chave) headers["X-ReiDagua-Chave"] = chave;
+  return headers;
+}
+
 function servidorAtivo() {
   return Boolean(apiUrl());
 }
@@ -161,7 +168,7 @@ async function carregar() {
     return local;
   }
   try {
-    const res = await fetch(apiUrl() + "/api/dados");
+    const res = await fetch(apiUrl() + "/api/dados", { headers: apiHeaders() });
     if (!res.ok) throw new Error("falha");
     const remoto = normalizarDados(await res.json());
     const remotoVazio = !remoto.clientes.length && !remoto.vendas.length && !remoto.produtos.length;
@@ -191,7 +198,7 @@ async function carregar() {
 async function salvarRemoto(dados) {
   const res = await fetch(apiUrl() + "/api/dados", {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: apiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(dados)
   });
   if (!res.ok) throw new Error("falha ao salvar");
