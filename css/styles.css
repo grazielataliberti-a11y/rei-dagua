@@ -89,6 +89,7 @@ h1, h2, .serif { font-family: "Libre Baskerville", Georgia, serif; }
 }
 .nav-ico { width: 1.4em; text-align: center; }
 .lock { margin-left: auto; font-size: 12px; }
+.novo-tag { display: none !important; }
 body.admin-on .lock { display: none; }
 .server-status {
   margin: 10px 12px 0;

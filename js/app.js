@@ -2077,6 +2077,7 @@ function bindView() {
 }
 
 function init() {
+  document.querySelectorAll(".novo-tag").forEach((el) => el.remove());
   document.querySelectorAll("[data-view]").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.clienteId = null;
