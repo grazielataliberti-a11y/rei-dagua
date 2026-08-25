@@ -126,19 +126,10 @@ function mascaraTelefone(v) {
   return d.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
 }
 
-function produtosIniciais() {
-  return [
-    { id: uid(), nome: "Galão 20L", marca: "Rei D'Água", unidade: "galão", preco: 12, vasilhame: true, estoque: 0 },
-    { id: uid(), nome: "Galão 20L", marca: "Crystal", unidade: "galão", preco: 14, vasilhame: true, estoque: 0 },
-    { id: uid(), nome: "Garrafa 1,5L", marca: "Rei D'Água", unidade: "unidade", preco: 3, vasilhame: false, estoque: 0 },
-    { id: uid(), nome: "Fardo copos 200ml", marca: "Rei D'Água", unidade: "fardo", preco: 18, vasilhame: false, estoque: 0 }
-  ];
-}
-
 function seed() {
   return {
     clientes: [],
-    produtos: produtosIniciais(),
+    produtos: [],
     vendas: [],
     contas: [contaPadrao()],
     lancamentos: [],
@@ -169,10 +160,30 @@ function garantirBanco(data) {
   return data;
 }
 
-function restaurarProdutosSeVazio(data) {
-  if ((data.produtos || []).length) return false;
-  data.produtos = produtosIniciais();
-  return true;
+function chaveProduto(p) {
+  return `${normalizar(p.nome)}|${normalizar(p.marca)}`;
+}
+
+const PRODUTOS_FICTICIOS = new Set([
+  "galao 20l|rei d'agua",
+  "galao 20l|crystal",
+  "garrafa 1,5l|rei d'agua",
+  "fardo copos 200ml|rei d'agua"
+]);
+
+function limparProdutosFicticios(data) {
+  const usados = new Set();
+  (data.vendas || []).forEach((v) => {
+    (v.itens || []).forEach((i) => {
+      if (i.produtoId) usados.add(i.produtoId);
+    });
+  });
+  const antes = (data.produtos || []).length;
+  data.produtos = (data.produtos || []).filter((p) => {
+    if (usados.has(p.id)) return true;
+    return !PRODUTOS_FICTICIOS.has(chaveProduto(p));
+  });
+  return (data.produtos || []).length !== antes;
 }
 
 function vazioProdutos(texto, origem) {
@@ -945,6 +956,46 @@ function htmlSugestoesLucro(pctAtual) {
   `).join("");
 }
 
+function htmlCamposPrecificacao(p = {}) {
+  const total = custoTotalProduto(p);
+  const venda = numCampo(p.preco) || (total ? precoPeloLucro(total, p.lucroPct) : 0);
+  const resumo = htmlResumoPreco(total, venda, p.lucroPct);
+  return `
+    <div class="fields">
+      <div class="field">
+        <label>Valor pago pelo produto</label>
+        <input class="preco-custo" type="number" min="0" step="0.01" inputmode="decimal" value="${p.custo || ""}" placeholder="0,00" />
+      </div>
+      <div class="field">
+        <label>Frete de entrega do produto</label>
+        <input class="preco-frete-compra" type="number" min="0" step="0.01" inputmode="decimal" value="${p.freteCompra || ""}" placeholder="0,00" />
+        <span class="help">Frete para trazer o produto até a loja</span>
+      </div>
+      <div class="field">
+        <label>Frete de entrega ao cliente</label>
+        <input class="preco-frete-entrega" type="number" min="0" step="0.01" inputmode="decimal" value="${p.freteEntrega || ""}" placeholder="0,00" />
+        <span class="help">Frete da entrega da venda</span>
+      </div>
+      <div class="field">
+        <label>Percentual de lucro (%)</label>
+        <input class="preco-lucro-pct" type="number" min="0" step="0.1" inputmode="decimal" value="${p.lucroPct || ""}" placeholder="30" />
+      </div>
+    </div>
+    <div class="chips sugestoes">${htmlSugestoesLucro(p.lucroPct)}</div>
+    <div class="preco-resultado">
+      <div>
+        <div class="label">Custo total</div>
+        <div class="value" data-custo-total>${formatarMoeda(total)}</div>
+      </div>
+      <div class="field">
+        <label>Preço de venda</label>
+        <input class="preco-venda" type="number" min="0" step="0.01" inputmode="decimal" value="${venda || ""}" placeholder="0,00" />
+      </div>
+    </div>
+    <p class="preco-resumo ${resumo.classe}">${resumo.texto}</p>
+  `;
+}
+
 function viewPrecificacao() {
   const lista = db.produtos.slice().sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR") || a.marca.localeCompare(b.marca, "pt-BR"));
   const linhas = lista.map((p) => {
@@ -953,68 +1004,56 @@ function viewPrecificacao() {
   });
   const kpis = kpisPrecificacao(linhas);
   return `
+    <div id="pagina-precificacao">
     <div class="page-head">
       <div>
         <h1>Precificação</h1>
-        <p>Some o valor pago, o frete do produto e o frete até o cliente. O percentual de lucro calcula o preço de venda.</p>
+        <p>Informe o produto real, o valor pago, os fretes e o percentual de lucro para chegar no preço de venda.</p>
       </div>
-      <button class="btn btn-gold" data-go="produto-form" data-origem="precificacao">Inserir produto</button>
     </div>
-    ${htmlKpisPrecificacao(kpis)}
+    ${lista.length ? htmlKpisPrecificacao(kpis) : ""}
+    <form id="form-novo-preco" class="item preco-card" style="cursor:default;margin-top:14px">
+      <h3>Inserir produto</h3>
+      <div class="fields">
+        <div class="field">
+          <label>Produto</label>
+          <input class="preco-nome" name="nome" required placeholder="Nome do produto" />
+        </div>
+        <div class="field">
+          <label>Marca</label>
+          <input class="preco-marca" name="marca" required placeholder="Marca" />
+        </div>
+        <div class="field">
+          <label>Unidade</label>
+          <select class="preco-unidade" name="unidade">
+            ${["galão", "unidade", "fardo", "caixa"].map((u) => `<option>${u}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      ${htmlCamposPrecificacao({})}
+      <div class="actions" style="margin-top:12px">
+        <button class="btn btn-gold" type="submit">Inserir produto</button>
+      </div>
+    </form>
     ${lista.length ? `
       <form id="form-precificacao">
         <div class="list" style="margin-top:14px">
-          ${lista.map((p) => {
-            const total = custoTotalProduto(p);
-            const venda = numCampo(p.preco) || (total ? precoPeloLucro(total, p.lucroPct) : 0);
-            const resumo = htmlResumoPreco(total, venda, p.lucroPct);
-            return `
+          ${lista.map((p) => `
               <div class="item preco-card" data-preco-produto="${p.id}" style="cursor:default">
                 <div class="row">
                   <h3>${esc(p.nome)} · ${esc(p.marca)}</h3>
                   <span class="badge">${esc(p.unidade)}</span>
                 </div>
-                <div class="fields">
-                  <div class="field">
-                    <label>Valor pago pelo produto</label>
-                    <input class="preco-custo" type="number" min="0" step="0.01" inputmode="decimal" value="${p.custo || ""}" placeholder="0,00" />
-                  </div>
-                  <div class="field">
-                    <label>Frete de entrega do produto</label>
-                    <input class="preco-frete-compra" type="number" min="0" step="0.01" inputmode="decimal" value="${p.freteCompra || ""}" placeholder="0,00" />
-                    <span class="help">Frete para trazer o produto até a loja</span>
-                  </div>
-                  <div class="field">
-                    <label>Frete de entrega ao cliente</label>
-                    <input class="preco-frete-entrega" type="number" min="0" step="0.01" inputmode="decimal" value="${p.freteEntrega || ""}" placeholder="0,00" />
-                    <span class="help">Frete da entrega da venda</span>
-                  </div>
-                  <div class="field">
-                    <label>Percentual de lucro (%)</label>
-                    <input class="preco-lucro-pct" type="number" min="0" step="0.1" inputmode="decimal" value="${p.lucroPct || ""}" placeholder="30" />
-                  </div>
-                </div>
-                <div class="chips sugestoes">${htmlSugestoesLucro(p.lucroPct)}</div>
-                <div class="preco-resultado">
-                  <div>
-                    <div class="label">Custo total</div>
-                    <div class="value" data-custo-total>${formatarMoeda(total)}</div>
-                  </div>
-                  <div class="field">
-                    <label>Preço de venda</label>
-                    <input class="preco-venda" type="number" min="0" step="0.01" inputmode="decimal" value="${venda || ""}" placeholder="0,00" />
-                  </div>
-                </div>
-                <p class="preco-resumo ${resumo.classe}">${resumo.texto}</p>
+                ${htmlCamposPrecificacao(p)}
               </div>
-            `;
-          }).join("")}
+            `).join("")}
         </div>
         <div class="actions" style="margin-top:14px">
           <button class="btn btn-gold" type="submit">Salvar precificação</button>
         </div>
       </form>
-    ` : vazioProdutos("Cadastre um produto para informar valor pago, fretes e lucro.", "precificacao")}
+    ` : ""}
+    </div>
   `;
 }
 
@@ -1755,8 +1794,8 @@ function bindView() {
     });
   }
 
-  const formPrecificacao = document.getElementById("form-precificacao");
-  if (formPrecificacao) {
+  const paginaPreco = document.getElementById("pagina-precificacao");
+  if (paginaPreco) {
     const valoresCard = (card) => ({
       custo: numCampo(card.querySelector(".preco-custo")?.value),
       freteCompra: numCampo(card.querySelector(".preco-frete-compra")?.value),
@@ -1784,7 +1823,7 @@ function bindView() {
       card.querySelectorAll("[data-lucro]").forEach((btn) => {
         btn.classList.toggle("active", Number(btn.dataset.lucro) === v.lucroPct);
       });
-      const linhas = [...document.querySelectorAll(".preco-card")].map((c) => {
+      const linhas = [...document.querySelectorAll("[data-preco-produto]")].map((c) => {
         const x = valoresCard(c);
         return {
           custo: x.custo,
@@ -1795,13 +1834,13 @@ function bindView() {
       const kpis = document.getElementById("preco-kpis");
       if (kpis) kpis.outerHTML = htmlKpisPrecificacao(kpisPrecificacao(linhas));
     };
-    formPrecificacao.addEventListener("input", (e) => {
+    paginaPreco.addEventListener("input", (e) => {
       const card = e.target.closest(".preco-card");
       if (!card) return;
       const recalcular = !e.target.classList.contains("preco-venda");
       atualizarCard(card, recalcular);
     });
-    formPrecificacao.querySelectorAll("[data-lucro]").forEach((btn) => {
+    paginaPreco.querySelectorAll("[data-lucro]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const card = btn.closest(".preco-card");
         const campo = card?.querySelector(".preco-lucro-pct");
@@ -1810,9 +1849,38 @@ function bindView() {
         atualizarCard(card, true);
       });
     });
-    formPrecificacao.addEventListener("submit", (e) => {
+    document.getElementById("form-novo-preco")?.addEventListener("submit", (e) => {
       e.preventDefault();
-      document.querySelectorAll(".preco-card").forEach((card) => {
+      const card = e.target;
+      const nome = String(card.querySelector(".preco-nome")?.value || "").trim();
+      const marca = String(card.querySelector(".preco-marca")?.value || "").trim();
+      const unidade = String(card.querySelector(".preco-unidade")?.value || "unidade");
+      if (!nome || !marca) {
+        toast("Informe o produto e a marca");
+        return;
+      }
+      const v = valoresCard(card);
+      const total = arredondarMoeda(v.custo + v.freteCompra + v.freteEntrega);
+      db.produtos.push({
+        id: uid(),
+        nome,
+        marca,
+        unidade,
+        custo: v.custo,
+        freteCompra: v.freteCompra,
+        freteEntrega: v.freteEntrega,
+        lucroPct: v.lucroPct,
+        preco: v.preco || (total ? precoPeloLucro(total, v.lucroPct) : 0),
+        vasilhame: unidade === "galão",
+        estoque: 0
+      });
+      save(db);
+      toast("Produto inserido na precificação");
+      setView("precificacao");
+    });
+    document.getElementById("form-precificacao")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      document.querySelectorAll("[data-preco-produto]").forEach((card) => {
         const p = db.produtos.find((x) => x.id === card.dataset.precoProduto);
         if (!p) return;
         const v = valoresCard(card);
@@ -2159,7 +2227,7 @@ function init() {
 
 async function iniciar() {
   db = await carregar();
-  if (restaurarProdutosSeVazio(db)) save(db);
+  if (limparProdutosFicticios(db)) save(db);
   init();
 }
 
