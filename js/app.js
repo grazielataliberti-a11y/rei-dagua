@@ -824,7 +824,10 @@ function viewProdutos() {
         <h1>Produtos</h1>
         <p>Cadastre uma vez e use em todas as vendas</p>
       </div>
-      <button class="btn btn-navy" data-go="produto-form">+ Produto</button>
+      <div class="actions">
+        <button class="btn btn-gold" data-go="precificacao">Precificação</button>
+        <button class="btn btn-navy" data-go="produto-form">+ Produto</button>
+      </div>
     </div>
     <div class="list">
       ${db.produtos.map((p) => `
