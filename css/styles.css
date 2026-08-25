@@ -313,6 +313,26 @@ input:focus, select:focus, textarea:focus {
 .valor-entrada { color: var(--ok); font-weight: 700; }
 .valor-saida { color: var(--danger); font-weight: 700; }
 
+.preco-card { cursor: default; }
+.preco-card .fields { margin-top: 10px; }
+.preco-card .chips { margin: 10px 0 0; }
+.preco-resultado {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #ead9a0;
+  background: #fffaf0;
+  border-radius: 12px;
+  align-items: end;
+}
+.preco-resultado .label { color: var(--muted); font-size: 13px; font-weight: 600; }
+.preco-resultado .value { font-size: 22px; font-weight: 700; color: var(--navy-deep); margin-top: 4px; }
+.preco-resumo { font-size: 13px; font-weight: 600; margin: 10px 0 0; color: var(--muted); }
+.preco-resumo.ok { color: var(--ok); }
+.preco-resumo.prejuizo { color: var(--danger); }
+
 .form { display: grid; gap: 12px; }
 .fields { display: grid; gap: 12px; grid-template-columns: repeat(2, 1fr); }
 .field { display: grid; gap: 6px; }
@@ -461,7 +481,7 @@ th { color: var(--muted); font-size: 12px; letter-spacing: .02em; }
 }
 
 @media (max-width: 640px) {
-  .fields, .grid-3, .grid-2, .grid-4 { grid-template-columns: 1fr; }
+  .fields, .grid-3, .grid-2, .grid-4, .preco-resultado { grid-template-columns: 1fr; }
   .page-head h1 { font-size: 24px; }
   .content { padding: 14px 12px 24px; }
 }

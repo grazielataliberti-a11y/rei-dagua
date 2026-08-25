@@ -47,6 +47,59 @@ function formatarMoeda(n) {
   return Number(n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+const MARKUPS_SUGERIDOS = [20, 30, 40, 50];
+
+function arredondarMoeda(n) {
+  return Math.round(Number(n || 0) * 100) / 100;
+}
+
+function numCampo(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function custoTotalProduto(p) {
+  return arredondarMoeda(
+    numCampo(p.custo) + numCampo(p.freteCompra) + numCampo(p.freteEntrega)
+  );
+}
+
+function precoPeloLucro(custoTotal, lucroPct) {
+  return arredondarMoeda(numCampo(custoTotal) * (1 + numCampo(lucroPct) / 100));
+}
+
+function analisePreco(custoTotal, venda) {
+  const c = numCampo(custoTotal);
+  const v = numCampo(venda);
+  const lucro = arredondarMoeda(v - c);
+  const markup = c > 0 ? (lucro / c) * 100 : 0;
+  return { custo: c, venda: v, lucro, markup };
+}
+
+function htmlResumoPreco(custoTotal, venda, lucroPct) {
+  const a = analisePreco(custoTotal, venda);
+  if (a.custo <= 0) {
+    return { texto: "Informe o valor pago e os fretes para calcular o preço.", classe: "" };
+  }
+  if (a.venda <= 0) {
+    return { texto: "Informe o percentual de lucro para chegar no preço de venda.", classe: "" };
+  }
+  if (a.lucro < 0) {
+    return {
+      texto: `Prejuízo de ${formatarMoeda(-a.lucro)} por unidade. O preço está abaixo do custo total.`,
+      classe: "prejuizo"
+    };
+  }
+  if (a.lucro === 0) {
+    return { texto: "Preço igual ao custo total: sem lucro por unidade.", classe: "prejuizo" };
+  }
+  const pct = numCampo(lucroPct);
+  return {
+    texto: `Custo total ${formatarMoeda(a.custo)} · lucro ${formatarMoeda(a.lucro)} (${pct || a.markup.toFixed(0)}% sobre o custo)`,
+    classe: "ok"
+  };
+}
+
 function normalizar(s) {
   return String(s || "")
     .toLowerCase()
@@ -120,6 +173,11 @@ function normalizarDados(data) {
   data.produtos.forEach((p) => {
     if (p.estoque == null || p.estoque === "") p.estoque = 0;
     p.estoque = Number(p.estoque);
+    p.custo = Number(p.custo || 0);
+    p.freteCompra = Number(p.freteCompra || 0);
+    p.freteEntrega = Number(p.freteEntrega || 0);
+    p.lucroPct = Number(p.lucroPct || 0);
+    p.preco = Number(p.preco || 0);
   });
   return data;
 }
@@ -450,6 +508,7 @@ function setView(view, extra = {}) {
         (["cliente-form", "cliente-ficha"].includes(view) && btn.dataset.view === "clientes") ||
         (view === "venda-form" && btn.dataset.view === "vendas") ||
         (view === "produto-form" && btn.dataset.view === (state.origem || "produtos")) ||
+        (view === "precificacao" && btn.dataset.view === "precificacao") ||
         (view === "banco" && btn.dataset.view === "banco");
     btn.classList.toggle("active", ativo);
   });
@@ -476,6 +535,7 @@ function render() {
     produtos: viewProdutos,
     estoque: viewEstoque,
     "produto-form": viewProdutoForm,
+    precificacao: viewPrecificacao,
     vendas: viewVendas,
     "venda-form": viewVendaForm,
     banco: viewBanco,
@@ -801,7 +861,12 @@ function viewProdutoForm() {
             ${["galão", "unidade", "fardo", "caixa"].map((u) => `<option ${p.unidade === u ? "selected" : ""}>${u}</option>`).join("")}
           </select>
         </div>
-        <div class="field"><label>Preço padrão</label><input name="preco" type="number" min="0" step="0.01" required value="${esc(p.preco)}" /></div>
+        <div class="field"><label>Preço padrão de venda</label><input name="preco" type="number" min="0" step="0.01" required value="${esc(p.preco)}" /></div>
+        <div class="field">
+          <label>Valor pago pelo produto</label>
+          <input name="custo" type="number" min="0" step="0.01" value="${esc(p.custo || "")}" placeholder="0,00" />
+          <span class="help">Fretes e % de lucro são calculados em Precificação.</span>
+        </div>
         <div class="field">
           <label>Quantidade em estoque</label>
           <input name="estoque" type="number" min="0" step="1" required value="${esc(qtdEstoque(p))}" />
@@ -820,6 +885,104 @@ function viewProdutoForm() {
         ${editando ? `<button class="btn btn-danger" type="button" data-excluir-produto="${p.id}">Excluir</button>` : ""}
       </div>
     </form>
+  `;
+}
+
+function kpisPrecificacao(linhas) {
+  const analisados = linhas.filter((l) => l.custoTotal > 0 && l.venda > 0);
+  const semCusto = linhas.filter((l) => l.custo <= 0).length;
+  const prejuizo = analisados.filter((l) => l.venda < l.custoTotal).length;
+  const lucroMedio = analisados.length
+    ? analisados.reduce((s, l) => s + (l.venda - l.custoTotal), 0) / analisados.length
+    : 0;
+  return { semCusto, prejuizo, lucroMedio, analisados: analisados.length };
+}
+
+function htmlKpisPrecificacao(kpis) {
+  return `
+    <div class="grid grid-3" id="preco-kpis">
+      <div class="card stat"><div class="label">Lucro médio / unidade</div><div class="value ${kpis.lucroMedio < 0 ? "valor-saida" : ""}">${kpis.analisados ? formatarMoeda(kpis.lucroMedio) : "—"}</div></div>
+      <div class="card stat"><div class="label">Sem valor pago</div><div class="value">${kpis.semCusto}</div><div class="hint">Preencha o valor do produto</div></div>
+      <div class="card stat"><div class="label">Abaixo do custo total</div><div class="value ${kpis.prejuizo ? "valor-saida" : ""}">${kpis.prejuizo}</div><div class="hint">Venda menor que pago + fretes</div></div>
+    </div>
+  `;
+}
+
+function htmlSugestoesLucro(pctAtual) {
+  return MARKUPS_SUGERIDOS.map((pct) => `
+    <button type="button" class="chip sug-preco ${Number(pctAtual) === pct ? "active" : ""}" data-lucro="${pct}">${pct}% de lucro</button>
+  `).join("");
+}
+
+function viewPrecificacao() {
+  const lista = db.produtos.slice().sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR") || a.marca.localeCompare(b.marca, "pt-BR"));
+  const linhas = lista.map((p) => {
+    const custoTotal = custoTotalProduto(p);
+    return { custo: numCampo(p.custo), custoTotal, venda: numCampo(p.preco) };
+  });
+  const kpis = kpisPrecificacao(linhas);
+  return `
+    <div class="page-head">
+      <div>
+        <h1>Precificação</h1>
+        <p>Some o valor pago, o frete do produto e o frete até o cliente. O percentual de lucro calcula o preço de venda.</p>
+      </div>
+    </div>
+    ${htmlKpisPrecificacao(kpis)}
+    ${lista.length ? `
+      <form id="form-precificacao">
+        <div class="list" style="margin-top:14px">
+          ${lista.map((p) => {
+            const total = custoTotalProduto(p);
+            const venda = numCampo(p.preco) || (total ? precoPeloLucro(total, p.lucroPct) : 0);
+            const resumo = htmlResumoPreco(total, venda, p.lucroPct);
+            return `
+              <div class="item preco-card" data-preco-produto="${p.id}" style="cursor:default">
+                <div class="row">
+                  <h3>${esc(p.nome)} · ${esc(p.marca)}</h3>
+                  <span class="badge">${esc(p.unidade)}</span>
+                </div>
+                <div class="fields">
+                  <div class="field">
+                    <label>Valor pago pelo produto</label>
+                    <input class="preco-custo" type="number" min="0" step="0.01" inputmode="decimal" value="${p.custo || ""}" placeholder="0,00" />
+                  </div>
+                  <div class="field">
+                    <label>Frete de entrega do produto</label>
+                    <input class="preco-frete-compra" type="number" min="0" step="0.01" inputmode="decimal" value="${p.freteCompra || ""}" placeholder="0,00" />
+                    <span class="help">Frete para trazer o produto até a loja</span>
+                  </div>
+                  <div class="field">
+                    <label>Frete de entrega ao cliente</label>
+                    <input class="preco-frete-entrega" type="number" min="0" step="0.01" inputmode="decimal" value="${p.freteEntrega || ""}" placeholder="0,00" />
+                    <span class="help">Frete da entrega da venda</span>
+                  </div>
+                  <div class="field">
+                    <label>Percentual de lucro (%)</label>
+                    <input class="preco-lucro-pct" type="number" min="0" step="0.1" inputmode="decimal" value="${p.lucroPct || ""}" placeholder="30" />
+                  </div>
+                </div>
+                <div class="chips sugestoes">${htmlSugestoesLucro(p.lucroPct)}</div>
+                <div class="preco-resultado">
+                  <div>
+                    <div class="label">Custo total</div>
+                    <div class="value" data-custo-total>${formatarMoeda(total)}</div>
+                  </div>
+                  <div class="field">
+                    <label>Preço de venda</label>
+                    <input class="preco-venda" type="number" min="0" step="0.01" inputmode="decimal" value="${venda || ""}" placeholder="0,00" />
+                  </div>
+                </div>
+                <p class="preco-resumo ${resumo.classe}">${resumo.texto}</p>
+              </div>
+            `;
+          }).join("")}
+        </div>
+        <div class="actions" style="margin-top:14px">
+          <button class="btn btn-gold" type="submit">Salvar precificação</button>
+        </div>
+      </form>
+    ` : `<div class="card empty" style="margin-top:14px">Cadastre um produto primeiro para lançar custo, fretes e lucro.</div>`}
   `;
 }
 
@@ -1538,21 +1701,99 @@ function bindView() {
     formProduto.addEventListener("submit", (e) => {
       e.preventDefault();
       const d = formData(formProduto);
+      const id = state.produtoId || uid();
+      const idx = db.produtos.findIndex((p) => p.id === id);
+      const atual = idx >= 0 ? db.produtos[idx] : {};
       const registro = {
-        id: state.produtoId || uid(),
+        ...atual,
+        id,
         nome: d.nome.trim(),
         marca: d.marca.trim(),
         unidade: d.unidade,
         preco: Number(d.preco || 0),
+        custo: Number(d.custo || 0),
         vasilhame: d.vasilhame === "sim",
         estoque: Number(d.estoque || 0)
       };
-      const idx = db.produtos.findIndex((p) => p.id === registro.id);
       if (idx >= 0) db.produtos[idx] = registro;
       else db.produtos.push(registro);
       save(db);
       toast("Produto salvo");
       setView(state.origem || "produtos");
+    });
+  }
+
+  const formPrecificacao = document.getElementById("form-precificacao");
+  if (formPrecificacao) {
+    const valoresCard = (card) => ({
+      custo: numCampo(card.querySelector(".preco-custo")?.value),
+      freteCompra: numCampo(card.querySelector(".preco-frete-compra")?.value),
+      freteEntrega: numCampo(card.querySelector(".preco-frete-entrega")?.value),
+      lucroPct: numCampo(card.querySelector(".preco-lucro-pct")?.value),
+      preco: numCampo(card.querySelector(".preco-venda")?.value)
+    });
+    const atualizarCard = (card, recalcularVenda) => {
+      const v = valoresCard(card);
+      const total = arredondarMoeda(v.custo + v.freteCompra + v.freteEntrega);
+      if (recalcularVenda) {
+        const venda = total > 0 ? precoPeloLucro(total, v.lucroPct) : 0;
+        const campoVenda = card.querySelector(".preco-venda");
+        if (campoVenda) campoVenda.value = venda || "";
+        v.preco = venda;
+      }
+      const totalEl = card.querySelector("[data-custo-total]");
+      if (totalEl) totalEl.textContent = formatarMoeda(total);
+      const resumo = htmlResumoPreco(total, v.preco, v.lucroPct);
+      const el = card.querySelector(".preco-resumo");
+      if (el) {
+        el.textContent = resumo.texto;
+        el.className = "preco-resumo " + resumo.classe;
+      }
+      card.querySelectorAll("[data-lucro]").forEach((btn) => {
+        btn.classList.toggle("active", Number(btn.dataset.lucro) === v.lucroPct);
+      });
+      const linhas = [...document.querySelectorAll(".preco-card")].map((c) => {
+        const x = valoresCard(c);
+        return {
+          custo: x.custo,
+          custoTotal: arredondarMoeda(x.custo + x.freteCompra + x.freteEntrega),
+          venda: x.preco
+        };
+      });
+      const kpis = document.getElementById("preco-kpis");
+      if (kpis) kpis.outerHTML = htmlKpisPrecificacao(kpisPrecificacao(linhas));
+    };
+    formPrecificacao.addEventListener("input", (e) => {
+      const card = e.target.closest(".preco-card");
+      if (!card) return;
+      const recalcular = !e.target.classList.contains("preco-venda");
+      atualizarCard(card, recalcular);
+    });
+    formPrecificacao.querySelectorAll("[data-lucro]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const card = btn.closest(".preco-card");
+        const campo = card?.querySelector(".preco-lucro-pct");
+        if (!campo) return;
+        campo.value = btn.dataset.lucro;
+        atualizarCard(card, true);
+      });
+    });
+    formPrecificacao.addEventListener("submit", (e) => {
+      e.preventDefault();
+      document.querySelectorAll(".preco-card").forEach((card) => {
+        const p = db.produtos.find((x) => x.id === card.dataset.precoProduto);
+        if (!p) return;
+        const v = valoresCard(card);
+        const total = arredondarMoeda(v.custo + v.freteCompra + v.freteEntrega);
+        p.custo = v.custo;
+        p.freteCompra = v.freteCompra;
+        p.freteEntrega = v.freteEntrega;
+        p.lucroPct = v.lucroPct;
+        p.preco = v.preco || (total ? precoPeloLucro(total, v.lucroPct) : 0);
+      });
+      save(db);
+      toast("Precificação salva. O preço de venda vale nas próximas vendas.");
+      setView("precificacao");
     });
   }
 
