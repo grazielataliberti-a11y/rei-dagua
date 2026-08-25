@@ -129,12 +129,7 @@ function mascaraTelefone(v) {
 function seed() {
   return {
     clientes: [],
-    produtos: [
-      { id: uid(), nome: "Galão 20L", marca: "Rei D'Água", unidade: "galão", preco: 12, vasilhame: true, estoque: 0 },
-      { id: uid(), nome: "Galão 20L", marca: "Crystal", unidade: "galão", preco: 14, vasilhame: true, estoque: 0 },
-      { id: uid(), nome: "Garrafa 1,5L", marca: "Rei D'Água", unidade: "unidade", preco: 3, vasilhame: false, estoque: 0 },
-      { id: uid(), nome: "Fardo copos 200ml", marca: "Rei D'Água", unidade: "fardo", preco: 18, vasilhame: false, estoque: 0 }
-    ],
+    produtos: [],
     vendas: [],
     contas: [contaPadrao()],
     lancamentos: [],
@@ -163,6 +158,43 @@ function garantirBanco(data) {
   data.despesas ||= [];
   if (!data.contas.length) data.contas.push(contaPadrao());
   return data;
+}
+
+function chaveProduto(p) {
+  return `${normalizar(p.nome)}|${normalizar(p.marca)}`;
+}
+
+const PRODUTOS_EXEMPLO = new Set([
+  "galao 20l|rei d'agua",
+  "galao 20l|crystal",
+  "garrafa 1,5l|rei d'agua",
+  "fardo copos 200ml|rei d'agua"
+]);
+
+function limparProdutosExemplo(data) {
+  const usados = new Set();
+  (data.vendas || []).forEach((v) => {
+    (v.itens || []).forEach((i) => {
+      if (i.produtoId) usados.add(i.produtoId);
+    });
+  });
+  const antes = (data.produtos || []).length;
+  data.produtos = (data.produtos || []).filter((p) => {
+    if (usados.has(p.id)) return true;
+    return !PRODUTOS_EXEMPLO.has(chaveProduto(p));
+  });
+  return (data.produtos || []).length !== antes;
+}
+
+function vazioProdutos(texto) {
+  return `
+    <div class="card empty">
+      <p>${texto}</p>
+      <div class="actions" style="justify-content:center;margin-top:14px">
+        <button class="btn btn-gold" data-go="produto-form">Inserir produto</button>
+      </div>
+    </div>
+  `;
 }
 
 function normalizarDados(data) {
@@ -818,7 +850,7 @@ function viewEstoque() {
             <button type="button" class="btn btn-ghost btn-sm" data-editar-produto="${p.id}" data-origem="estoque">Editar</button>
           </div>
         </div>
-      `).join("") || `<div class="card empty">Nenhum produto cadastrado. Clique em + Produto.</div>`}
+      `).join("") || vazioProdutos("Nenhum produto cadastrado.")}
     </div>
   `;
 }
@@ -844,14 +876,14 @@ function viewProdutos() {
           </div>
           <div class="meta">${p.vasilhame ? "Controla vasilhame" : "Sem vasilhame"} · ${qtdEstoque(p)} em estoque</div>
         </button>
-      `).join("") || `<div class="card empty">Nenhum produto cadastrado.</div>`}
+      `).join("") || vazioProdutos("Nenhum produto cadastrado.")}
     </div>
   `;
 }
 
 function viewProdutoForm() {
   const p = db.produtos.find((x) => x.id === state.produtoId) || {
-    nome: "", marca: "Rei D'Água", unidade: "galão", preco: "", vasilhame: true, estoque: 0
+    nome: "", marca: "", unidade: "galão", preco: "", vasilhame: true, estoque: 0
   };
   const editando = Boolean(state.produtoId);
   const voltar = state.origem || "produtos";
@@ -862,8 +894,8 @@ function viewProdutoForm() {
     </div>
     <form class="card form" id="form-produto">
       <div class="fields">
-        <div class="field"><label>Produto</label><input name="nome" required value="${esc(p.nome)}" placeholder="Galão 20L" /></div>
-        <div class="field"><label>Marca</label><input name="marca" required value="${esc(p.marca)}" /></div>
+        <div class="field"><label>Produto</label><input name="nome" required value="${esc(p.nome)}" placeholder="Nome do produto" /></div>
+        <div class="field"><label>Marca</label><input name="marca" required value="${esc(p.marca)}" placeholder="Marca" /></div>
         <div class="field">
           <label>Unidade</label>
           <select name="unidade">
@@ -991,7 +1023,7 @@ function viewPrecificacao() {
           <button class="btn btn-gold" type="submit">Salvar precificação</button>
         </div>
       </form>
-    ` : `<div class="card empty" style="margin-top:14px">Cadastre um produto primeiro para lançar custo, fretes e lucro.</div>`}
+    ` : vazioProdutos("Cadastre um produto para informar valor pago, fretes e lucro.")}
   `;
 }
 
@@ -2136,6 +2168,7 @@ function init() {
 
 async function iniciar() {
   db = await carregar();
+  if (limparProdutosExemplo(db)) save(db);
   init();
 }
 
