@@ -52,9 +52,13 @@ h1, h2, .serif { font-family: "Libre Baskerville", Georgia, serif; }
   padding: 18px 18px 8px;
 }
 .brand img {
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  max-height: 72px;
   display: block;
+  margin: 0 auto;
   border-radius: 12px;
+  object-fit: contain;
 }
 
 .side-nav {
@@ -70,7 +74,7 @@ h1, h2, .serif { font-family: "Libre Baskerville", Georgia, serif; }
   background: transparent;
   color: var(--text);
   text-align: left;
-  padding: 11px 12px;
+  padding: 9px 12px;
   border-radius: 12px;
   font: 600 15px/1.2 "DM Sans", sans-serif;
   cursor: pointer;
@@ -83,8 +87,24 @@ h1, h2, .serif { font-family: "Libre Baskerville", Georgia, serif; }
   background: var(--navy);
   color: #fff;
 }
+.nav-btn.nav-novo:not(.active) {
+  background: #fff8e7;
+  box-shadow: inset 0 0 0 1px #ead9a0;
+}
 .nav-ico { width: 1.4em; text-align: center; }
 .lock { margin-left: auto; font-size: 12px; }
+.novo-tag {
+  margin-left: auto;
+  background: var(--gold);
+  color: #fff8e7;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 999px;
+}
+.nav-btn.nav-novo .lock { margin-left: 6px; }
 body.admin-on .lock { display: none; }
 .server-status {
   margin: 10px 12px 0;
@@ -419,7 +439,9 @@ th { color: var(--muted); font-size: 12px; letter-spacing: .02em; }
   .top-logo { display: block; }
   .bottom-nav {
     display: flex;
-    overflow-x: auto;
+    flex-wrap: wrap;
+    justify-content: center;
+    overflow: visible;
     position: fixed;
     left: 0;
     right: 0;
@@ -428,7 +450,6 @@ th { color: var(--muted); font-size: 12px; letter-spacing: .02em; }
     border-top: 1px solid var(--line);
     padding: 6px 4px calc(8px + var(--safe-b));
     z-index: 20;
-    -webkit-overflow-scrolling: touch;
   }
   .bottom-nav button {
     border: 0;
@@ -438,14 +459,16 @@ th { color: var(--muted); font-size: 12px; letter-spacing: .02em; }
     display: grid;
     gap: 3px;
     justify-items: center;
-    padding: 6px 8px;
-    flex: 0 0 auto;
-    min-width: 68px;
+    padding: 6px 6px;
+    flex: 1 1 18%;
+    min-width: 64px;
+    max-width: 90px;
   }
+  .bottom-nav button.nav-novo { color: var(--navy); font-weight: 800; }
   .bottom-nav button span { font-size: 16px; }
   .bottom-nav button.active { color: var(--navy); }
-  .content { padding-bottom: 24px; }
-  .page-foot { padding-bottom: calc(88px + var(--safe-b)); }
+  .content { padding-bottom: 110px; }
+  .page-foot { padding-bottom: calc(120px + var(--safe-b)); }
 }
 
 .login-modal {
