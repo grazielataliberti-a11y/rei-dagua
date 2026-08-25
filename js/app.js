@@ -126,10 +126,19 @@ function mascaraTelefone(v) {
   return d.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
 }
 
+function produtosIniciais() {
+  return [
+    { id: uid(), nome: "Galão 20L", marca: "Rei D'Água", unidade: "galão", preco: 12, vasilhame: true, estoque: 0 },
+    { id: uid(), nome: "Galão 20L", marca: "Crystal", unidade: "galão", preco: 14, vasilhame: true, estoque: 0 },
+    { id: uid(), nome: "Garrafa 1,5L", marca: "Rei D'Água", unidade: "unidade", preco: 3, vasilhame: false, estoque: 0 },
+    { id: uid(), nome: "Fardo copos 200ml", marca: "Rei D'Água", unidade: "fardo", preco: 18, vasilhame: false, estoque: 0 }
+  ];
+}
+
 function seed() {
   return {
     clientes: [],
-    produtos: [],
+    produtos: produtosIniciais(),
     vendas: [],
     contas: [contaPadrao()],
     lancamentos: [],
@@ -160,38 +169,19 @@ function garantirBanco(data) {
   return data;
 }
 
-function chaveProduto(p) {
-  return `${normalizar(p.nome)}|${normalizar(p.marca)}`;
+function restaurarProdutosSeVazio(data) {
+  if ((data.produtos || []).length) return false;
+  data.produtos = produtosIniciais();
+  return true;
 }
 
-const PRODUTOS_EXEMPLO = new Set([
-  "galao 20l|rei d'agua",
-  "galao 20l|crystal",
-  "garrafa 1,5l|rei d'agua",
-  "fardo copos 200ml|rei d'agua"
-]);
-
-function limparProdutosExemplo(data) {
-  const usados = new Set();
-  (data.vendas || []).forEach((v) => {
-    (v.itens || []).forEach((i) => {
-      if (i.produtoId) usados.add(i.produtoId);
-    });
-  });
-  const antes = (data.produtos || []).length;
-  data.produtos = (data.produtos || []).filter((p) => {
-    if (usados.has(p.id)) return true;
-    return !PRODUTOS_EXEMPLO.has(chaveProduto(p));
-  });
-  return (data.produtos || []).length !== antes;
-}
-
-function vazioProdutos(texto) {
+function vazioProdutos(texto, origem) {
+  const origemAttr = origem ? ` data-origem="${origem}"` : "";
   return `
     <div class="card empty">
       <p>${texto}</p>
       <div class="actions" style="justify-content:center;margin-top:14px">
-        <button class="btn btn-gold" data-go="produto-form">Inserir produto</button>
+        <button class="btn btn-gold" data-go="produto-form"${origemAttr}>Inserir produto</button>
       </div>
     </div>
   `;
@@ -968,6 +958,7 @@ function viewPrecificacao() {
         <h1>Precificação</h1>
         <p>Some o valor pago, o frete do produto e o frete até o cliente. O percentual de lucro calcula o preço de venda.</p>
       </div>
+      <button class="btn btn-gold" data-go="produto-form" data-origem="precificacao">Inserir produto</button>
     </div>
     ${htmlKpisPrecificacao(kpis)}
     ${lista.length ? `
@@ -1023,7 +1014,7 @@ function viewPrecificacao() {
           <button class="btn btn-gold" type="submit">Salvar precificação</button>
         </div>
       </form>
-    ` : vazioProdutos("Cadastre um produto para informar valor pago, fretes e lucro.")}
+    ` : vazioProdutos("Cadastre um produto para informar valor pago, fretes e lucro.", "precificacao")}
   `;
 }
 
@@ -2168,7 +2159,7 @@ function init() {
 
 async function iniciar() {
   db = await carregar();
-  if (limparProdutosExemplo(db)) save(db);
+  if (restaurarProdutosSeVazio(db)) save(db);
   init();
 }
 
