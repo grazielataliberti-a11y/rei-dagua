@@ -87,24 +87,8 @@ h1, h2, .serif { font-family: "Libre Baskerville", Georgia, serif; }
   background: var(--navy);
   color: #fff;
 }
-.nav-btn.nav-novo:not(.active) {
-  background: #fff8e7;
-  box-shadow: inset 0 0 0 1px #ead9a0;
-}
 .nav-ico { width: 1.4em; text-align: center; }
 .lock { margin-left: auto; font-size: 12px; }
-.novo-tag {
-  margin-left: auto;
-  background: var(--gold);
-  color: #fff8e7;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  padding: 3px 7px;
-  border-radius: 999px;
-}
-.nav-btn.nav-novo .lock { margin-left: 6px; }
 body.admin-on .lock { display: none; }
 .server-status {
   margin: 10px 12px 0;
@@ -464,7 +448,6 @@ th { color: var(--muted); font-size: 12px; letter-spacing: .02em; }
     min-width: 64px;
     max-width: 90px;
   }
-  .bottom-nav button.nav-novo { color: var(--navy); font-weight: 800; }
   .bottom-nav button span { font-size: 16px; }
   .bottom-nav button.active { color: var(--navy); }
   .content { padding-bottom: 110px; }
