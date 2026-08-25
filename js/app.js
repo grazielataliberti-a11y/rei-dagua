@@ -462,7 +462,13 @@ function clientesFiltrados(termo = state.busca, filtro = state.filtroClientes) {
 }
 
 function ehAdmin() {
-  return sessionStorage.getItem(ADMIN_KEY) === "1";
+  if (localStorage.getItem(ADMIN_KEY) === "1") return true;
+  if (sessionStorage.getItem(ADMIN_KEY) === "1") {
+    localStorage.setItem(ADMIN_KEY, "1");
+    sessionStorage.removeItem(ADMIN_KEY);
+    return true;
+  }
+  return false;
 }
 
 async function hashSenha(texto) {
@@ -2110,13 +2116,15 @@ function init() {
       document.getElementById("login-erro").textContent = "Senha incorreta.";
       return;
     }
-    sessionStorage.setItem(ADMIN_KEY, "1");
+    localStorage.setItem(ADMIN_KEY, "1");
+    sessionStorage.removeItem(ADMIN_KEY);
     fecharLogin();
     atualizarAcessoAdmin();
     setView(state.pendenteView || "inicio", state.pendenteExtra || {});
   });
   document.getElementById("login-cancelar")?.addEventListener("click", fecharLogin);
   document.getElementById("btn-sair-admin")?.addEventListener("click", () => {
+    localStorage.removeItem(ADMIN_KEY);
     sessionStorage.removeItem(ADMIN_KEY);
     atualizarAcessoAdmin();
     toast("Saiu do modo administrador");
