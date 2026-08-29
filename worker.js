@@ -41,6 +41,173 @@ function json(body, status, request) {
   return Response.json(body, { status, headers: cors(request) });
 }
 
+const LOJA = {
+  cep: "09751120",
+  endereco: "Rua Itapeva, 158, Baeta Neves, São Bernardo do Campo - SP",
+  lat: -23.69389,
+  lng: -46.565
+};
+const LIMITE_KM = 5;
+
+function soCep(v) {
+  return String(v || "").replace(/\D/g, "").slice(0, 8);
+}
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+async function geocodeBrasil(cep) {
+  const res = await fetch("https://brasilapi.com.br/api/cep/v2/" + cep);
+  if (!res.ok) return null;
+  const j = await res.json();
+  const lat = Number(j.location?.coordinates?.latitude);
+  const lng = Number(j.location?.coordinates?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !lat || !lng) {
+    return {
+      lat: null,
+      lng: null,
+      label: [j.street, j.neighborhood, j.city, j.state].filter(Boolean).join(", ")
+    };
+  }
+  return {
+    lat,
+    lng,
+    label: [j.street, j.neighborhood, j.city, j.state].filter(Boolean).join(", ")
+  };
+}
+
+async function geocodeNominatim(q) {
+  const url =
+    "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=" +
+    encodeURIComponent(q);
+  const res = await fetch(url, {
+    headers: { "User-Agent": "ReiDagua/1.0 (distribuidora)" }
+  });
+  if (!res.ok) return null;
+  const arr = await res.json();
+  if (!arr?.[0]) return null;
+  return {
+    lat: Number(arr[0].lat),
+    lng: Number(arr[0].lon),
+    label: arr[0].display_name
+  };
+}
+
+async function geocodeGoogle(env, q) {
+  const key = env.GOOGLE_MAPS_KEY;
+  if (!key) return null;
+  const url =
+    "https://maps.googleapis.com/maps/api/geocode/json?language=pt-BR&region=br&address=" +
+    encodeURIComponent(q) +
+    "&key=" +
+    encodeURIComponent(key);
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const j = await res.json();
+  const r = j.results?.[0];
+  if (!r) return null;
+  return {
+    lat: r.geometry.location.lat,
+    lng: r.geometry.location.lng,
+    label: r.formatted_address
+  };
+}
+
+async function distanciaGoogle(env, origem, dest) {
+  const key = env.GOOGLE_MAPS_KEY;
+  if (!key) return null;
+  const url =
+    "https://maps.googleapis.com/maps/api/distancematrix/json?units=metric&language=pt-BR&mode=driving&origins=" +
+    encodeURIComponent(origem.lat + "," + origem.lng) +
+    "&destinations=" +
+    encodeURIComponent(dest.lat + "," + dest.lng) +
+    "&key=" +
+    encodeURIComponent(key);
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const j = await res.json();
+  const el = j.rows?.[0]?.elements?.[0];
+  if (el?.status !== "OK" || el.distance?.value == null) return null;
+  return el.distance.value / 1000;
+}
+
+async function distanciaOsrm(origem, dest) {
+  const url =
+    "https://router.project-osrm.org/route/v1/driving/" +
+    origem.lng +
+    "," +
+    origem.lat +
+    ";" +
+    dest.lng +
+    "," +
+    dest.lat +
+    "?overview=false";
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const j = await res.json();
+  const m = j.routes?.[0]?.distance;
+  if (m == null) return null;
+  return m / 1000;
+}
+
+async function localizar(env, cep, endereco) {
+  const texto = [endereco, cep ? "CEP " + cep : ""].filter(Boolean).join(", ");
+  const g = await geocodeGoogle(env, texto || cep);
+  if (g?.lat) return g;
+  if (cep) {
+    const br = await geocodeBrasil(cep);
+    if (br?.lat) return br;
+    if (br?.label && !endereco) {
+      const n = await geocodeNominatim(br.label + " Brasil");
+      if (n?.lat) return { ...n, label: br.label };
+    }
+  }
+  if (endereco) {
+    const n = await geocodeNominatim(endereco + (cep ? " " + cep : "") + " Brasil");
+    if (n?.lat) return n;
+  }
+  if (cep) {
+    const n = await geocodeNominatim(cep + " Brasil");
+    if (n?.lat) return n;
+  }
+  return null;
+}
+
+async function calcularDistancia(env, cep, endereco) {
+  const dest = await localizar(env, cep, endereco);
+  if (!dest?.lat) {
+    return { ok: false, erro: "Nao foi possivel localizar este CEP ou endereco." };
+  }
+  const origem = { lat: LOJA.lat, lng: LOJA.lng, label: LOJA.endereco };
+  const linha = haversineKm(origem.lat, origem.lng, dest.lat, dest.lng);
+  let km = await distanciaGoogle(env, origem, dest);
+  let fonte = "google";
+  if (km == null) {
+    km = await distanciaOsrm(origem, dest);
+    fonte = km == null ? "linha" : "rota";
+  }
+  if (km == null) km = linha;
+  km = Math.round(km * 10) / 10;
+  return {
+    ok: true,
+    km,
+    kmLinha: Math.round(linha * 10) / 10,
+    atende: km <= LIMITE_KM,
+    limiteKm: LIMITE_KM,
+    origem: { ...origem, cep: LOJA.cep },
+    destino: dest,
+    fonte
+  };
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") {
@@ -54,6 +221,20 @@ export default {
 
     if (url.pathname === "/api/saude") {
       return json({ ok: true, servico: "Rei D'Água" }, 200, request);
+    }
+
+    if (url.pathname === "/api/distancia" && request.method === "GET") {
+      const cep = soCep(url.searchParams.get("cep"));
+      const endereco = String(url.searchParams.get("endereco") || "").trim();
+      if (cep.length !== 8 && !endereco) {
+        return json({ ok: false, erro: "Informe o CEP ou o endereco do cliente." }, 400, request);
+      }
+      try {
+        const resultado = await calcularDistancia(env, cep.length === 8 ? cep : "", endereco);
+        return json(resultado, resultado.ok ? 200 : 404, request);
+      } catch {
+        return json({ ok: false, erro: "Nao foi possivel calcular a distancia agora." }, 500, request);
+      }
     }
 
     if (url.pathname === "/api/dados" && (request.method === "GET" || request.method === "PUT")) {

@@ -338,6 +338,27 @@ input:focus, select:focus, textarea:focus {
 .preco-resumo.ok { color: var(--ok); }
 .preco-resumo.prejuizo { color: var(--danger); }
 
+.dist-card {
+  text-align: center;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+.dist-card.dist-ok { border-color: #8fd4a8; background: #f3fbf6; }
+.dist-card.dist-nao { border-color: #f0b4b4; background: #fdf4f4; }
+.dist-figura { width: 92px; height: 92px; }
+.dist-km {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--navy-deep);
+  font-family: "DM Sans", sans-serif;
+}
+.dist-status { margin: 0; font-size: 18px; font-weight: 800; }
+.dist-ok .dist-status { color: var(--ok); }
+.dist-nao .dist-status { color: var(--danger); }
+.dist-card .meta { margin: 0; }
+.dist-card .btn { margin-top: 6px; }
+
 .form { display: grid; gap: 12px; }
 .fields { display: grid; gap: 12px; grid-template-columns: repeat(2, 1fr); }
 .field { display: grid; gap: 6px; }

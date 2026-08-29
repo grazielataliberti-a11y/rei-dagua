@@ -3,7 +3,8 @@ const VIEWS_LIVRES = new Set([
   "clientes", "cliente-form", "cliente-ficha",
   "vendas", "venda-form",
   "produtos", "produto-form",
-  "estoque"
+  "estoque",
+  "distancia"
 ]);
 const ADMIN_HASH = "7a0178cdb2fb526f5637d0f5bae3432e397a4c13f187e880195f5ddd8b41ce1d";
 const ADMIN_KEY = "reidagua_admin";
@@ -111,6 +112,10 @@ function mascaraCep(v) {
   const d = String(v || "").replace(/\D/g, "").slice(0, 8);
   if (d.length <= 5) return d;
   return d.replace(/(\d{5})(\d{0,3})/, "$1-$2");
+}
+
+function soDigitosCep(v) {
+  return String(v || "").replace(/\D/g, "").slice(0, 8);
 }
 
 function mascaraTelefone(v) {
@@ -571,6 +576,7 @@ function render() {
     clientes: viewClientes,
     "cliente-form": viewClienteForm,
     "cliente-ficha": viewClienteFicha,
+    distancia: viewDistancia,
     produtos: viewProdutos,
     estoque: viewEstoque,
     "produto-form": viewProdutoForm,
@@ -599,6 +605,73 @@ function cardCliente(c) {
       <div class="meta">Cadastro: ${formatarData(c.dataCadastro)} · ${esc(c.telefone || "sem telefone")}</div>
       <div class="meta">${ultima ? `Última compra: ${formatarData(ultima.data)} — ${esc(itens)}` : "Ainda sem compra"}</div>
     </button>
+  `;
+}
+
+function figuraDistancia(ok) {
+  if (ok) {
+    return `
+      <svg class="dist-figura" viewBox="0 0 120 120" aria-hidden="true">
+        <circle cx="60" cy="60" r="56" fill="#1b8a4a"/>
+        <path d="M34 62 l18 18 34-40" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `;
+  }
+  return `
+    <svg class="dist-figura" viewBox="0 0 120 120" aria-hidden="true">
+      <circle cx="60" cy="60" r="56" fill="#c62828"/>
+      <path d="M40 40 l40 40 M80 40 l-40 40" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round"/>
+    </svg>
+  `;
+}
+
+function htmlResultadoDistancia(r) {
+  if (!r) return "";
+  if (!r.ok) {
+    return `<div class="card empty"><p>${esc(r.erro || "Não foi possível calcular a distância.")}</p></div>`;
+  }
+  const maps =
+    "https://www.google.com/maps/dir/?api=1&origin=" +
+    encodeURIComponent("Rua Itapeva, 158, São Bernardo do Campo - SP") +
+    "&destination=" +
+    encodeURIComponent(r.destino?.label || "");
+  return `
+    <div class="card dist-card ${r.atende ? "dist-ok" : "dist-nao"}">
+      ${figuraDistancia(r.atende)}
+      <div class="dist-km">${String(r.km).replace(".", ",")} km</div>
+      <p class="dist-status">${r.atende ? "Dentro da área — podemos atender" : "Fora da área — acima de 5 km"}</p>
+      <p class="meta">Loja: Rua Itapeva, 158 — CEP 09751-120</p>
+      <p class="meta">Cliente: ${esc(r.destino?.label || "—")}</p>
+      <a class="btn btn-navy" href="${maps}" target="_blank" rel="noopener">Ver rota no Google Maps</a>
+    </div>
+  `;
+}
+
+function viewDistancia() {
+  const d = state.distancia || { cep: "", endereco: "" };
+  return `
+    <div class="page-head">
+      <div>
+        <h1>Distância</h1>
+        <p>Digite o CEP ou o endereço do cliente. Calculamos a distância até a loja (CEP 09751-120). Até 5 km atendemos.</p>
+      </div>
+    </div>
+    <form class="card form" id="form-distancia">
+      <div class="fields">
+        <div class="field">
+          <label>CEP do cliente</label>
+          <input id="dist-cep" name="cep" inputmode="numeric" placeholder="00000-000" value="${esc(d.cep || "")}" />
+        </div>
+        <div class="field">
+          <label>Endereço (se não tiver CEP)</label>
+          <input id="dist-endereco" name="endereco" placeholder="Rua, número, bairro, cidade" value="${esc(d.endereco || "")}" />
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-gold" type="submit">Calcular distância</button>
+      </div>
+    </form>
+    <div id="resultado-distancia" style="margin-top:14px">${htmlResultadoDistancia(d.resultado)}</div>
   `;
 }
 
@@ -1645,6 +1718,42 @@ function bindView() {
       setView(el.dataset.go);
     });
   });
+  const formDistancia = document.getElementById("form-distancia");
+  if (formDistancia) {
+    const cepCampo = document.getElementById("dist-cep");
+    cepCampo?.addEventListener("input", () => {
+      cepCampo.value = mascaraCep(cepCampo.value);
+    });
+    formDistancia.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const cep = soDigitosCep(document.getElementById("dist-cep")?.value);
+      const endereco = String(document.getElementById("dist-endereco")?.value || "").trim();
+      state.distancia = {
+        cep: mascaraCep(cep),
+        endereco,
+        resultado: null
+      };
+      if (cep.length !== 8 && !endereco) {
+        toast("Informe o CEP ou o endereço do cliente");
+        return;
+      }
+      const caixa = document.getElementById("resultado-distancia");
+      if (caixa) caixa.innerHTML = `<div class="card empty"><p>Calculando distância…</p></div>`;
+      const qs = new URLSearchParams();
+      if (cep.length === 8) qs.set("cep", cep);
+      if (endereco) qs.set("endereco", endereco);
+      try {
+        const res = await fetch(apiUrl() + "/api/distancia?" + qs.toString(), { headers: apiHeaders() });
+        const json = await res.json();
+        state.distancia.resultado = json;
+        if (caixa) caixa.innerHTML = htmlResultadoDistancia(json);
+        if (!json.ok) toast(json.erro || "Não foi possível calcular");
+      } catch {
+        toast("Não foi possível calcular a distância");
+        if (caixa) caixa.innerHTML = htmlResultadoDistancia({ ok: false, erro: "Servidor offline. Tente de novo." });
+      }
+    });
+  }
   document.querySelectorAll("[data-open-cliente]").forEach((el) => {
     el.addEventListener("click", () => setView("cliente-ficha", { clienteId: el.dataset.openCliente }));
   });
