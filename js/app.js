@@ -631,15 +631,16 @@ function htmlResultadoDistancia(r) {
     return `<div class="card empty"><p>${esc(r.erro || "Não foi possível calcular a distância.")}</p></div>`;
   }
   const maps =
-    "https://www.google.com/maps/dir/?api=1&origin=" +
-    encodeURIComponent("Rua Itapeva, 158, São Bernardo do Campo - SP") +
+    "https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=" +
+    encodeURIComponent((r.origem?.lat || "") + "," + (r.origem?.lng || "")) +
     "&destination=" +
-    encodeURIComponent(r.destino?.label || "");
+    encodeURIComponent((r.destino?.lat || "") + "," + (r.destino?.lng || ""));
   return `
     <div class="card dist-card ${r.atende ? "dist-ok" : "dist-nao"}">
       ${figuraDistancia(r.atende)}
       <div class="dist-km">${String(r.km).replace(".", ",")} km</div>
       <p class="dist-status">${r.atende ? "Dentro da área — podemos atender" : "Fora da área — acima de 5 km"}</p>
+      <p class="meta">Rota de carro pelas ruas (não a pé e não em linha reta)</p>
       <p class="meta">Loja: Rua Itapeva, 158 — CEP 09751-120</p>
       <p class="meta">Cliente: ${esc(r.destino?.label || "—")}</p>
       <a class="btn btn-navy" href="${maps}" target="_blank" rel="noopener">Ver rota no Google Maps</a>
@@ -653,7 +654,7 @@ function viewDistancia() {
     <div class="page-head">
       <div>
         <h1>Distância</h1>
-        <p>Digite o CEP ou o endereço do cliente. Calculamos a distância até a loja (CEP 09751-120). Até 5 km atendemos.</p>
+        <p>Digite o CEP e, se possível, a rua com o número. A distância é a rota de carro até a loja (Rua Itapeva, 158 — CEP 09751-120), não a pé e não em linha reta. Até 5 km atendemos.</p>
       </div>
     </div>
     <form class="card form" id="form-distancia">
@@ -664,7 +665,7 @@ function viewDistancia() {
         </div>
         <div class="field">
           <label>Endereço (se não tiver CEP)</label>
-          <input id="dist-endereco" name="endereco" placeholder="Rua, número, bairro, cidade" value="${esc(d.endereco || "")}" />
+          <input id="dist-endereco" name="endereco" placeholder="Rua, número, bairro" value="${esc(d.endereco || "")}" />
         </div>
       </div>
       <div class="actions">

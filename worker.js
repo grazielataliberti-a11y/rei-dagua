@@ -44,10 +44,11 @@ function json(body, status, request) {
 const LOJA = {
   cep: "09751120",
   endereco: "Rua Itapeva, 158, Baeta Neves, São Bernardo do Campo - SP",
-  lat: -23.69389,
-  lng: -46.565
+  lat: -23.6859695,
+  lng: -46.5444094
 };
 const LIMITE_KM = 5;
+const UA = { "User-Agent": "ReiDagua/1.0 (distribuidora)" };
 
 function soCep(v) {
   return String(v || "").replace(/\D/g, "").slice(0, 8);
@@ -64,33 +65,23 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-async function geocodeBrasil(cep) {
-  const res = await fetch("https://brasilapi.com.br/api/cep/v2/" + cep);
+async function viaCep(cep) {
+  const res = await fetch("https://viacep.com.br/ws/" + cep + "/json/");
   if (!res.ok) return null;
   const j = await res.json();
-  const lat = Number(j.location?.coordinates?.latitude);
-  const lng = Number(j.location?.coordinates?.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !lat || !lng) {
-    return {
-      lat: null,
-      lng: null,
-      label: [j.street, j.neighborhood, j.city, j.state].filter(Boolean).join(", ")
-    };
-  }
+  if (j.erro) return null;
+  const partes = [j.logradouro, j.bairro, j.localidade, j.uf].filter(Boolean);
   return {
-    lat,
-    lng,
-    label: [j.street, j.neighborhood, j.city, j.state].filter(Boolean).join(", ")
+    label: partes.join(", "),
+    query: [...partes, "Brasil"].join(", ")
   };
 }
 
 async function geocodeNominatim(q) {
   const url =
-    "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=" +
+    "https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&countrycodes=br&q=" +
     encodeURIComponent(q);
-  const res = await fetch(url, {
-    headers: { "User-Agent": "ReiDagua/1.0 (distribuidora)" }
-  });
+  const res = await fetch(url, { headers: UA });
   if (!res.ok) return null;
   const arr = await res.json();
   if (!arr?.[0]) return null;
@@ -140,45 +131,47 @@ async function distanciaGoogle(env, origem, dest) {
 }
 
 async function distanciaOsrm(origem, dest) {
-  const url =
-    "https://router.project-osrm.org/route/v1/driving/" +
-    origem.lng +
-    "," +
-    origem.lat +
-    ";" +
-    dest.lng +
-    "," +
-    dest.lat +
-    "?overview=false";
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const j = await res.json();
-  const m = j.routes?.[0]?.distance;
-  if (m == null) return null;
-  return m / 1000;
+  const pontos = origem.lng + "," + origem.lat + ";" + dest.lng + "," + dest.lat;
+  const urls = [
+    "https://router.project-osrm.org/route/v1/driving/" + pontos + "?overview=false",
+    "https://routing.openstreetmap.de/routed-car/route/v1/driving/" + pontos + "?overview=false"
+  ];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { headers: UA });
+      if (!res.ok) continue;
+      const j = await res.json();
+      const m = j.routes?.[0]?.distance;
+      if (m != null) return m / 1000;
+    } catch {
+      /* tenta o próximo servidor */
+    }
+  }
+  return null;
 }
 
 async function localizar(env, cep, endereco) {
   const texto = [endereco, cep ? "CEP " + cep : ""].filter(Boolean).join(", ");
   const g = await geocodeGoogle(env, texto || cep);
   if (g?.lat) return g;
+  if (endereco) {
+    const n = await geocodeNominatim(endereco + (cep ? ", " + cep : "") + ", Brasil");
+    if (n?.lat) return n;
+  }
   if (cep) {
-    const br = await geocodeBrasil(cep);
-    if (br?.lat) return br;
-    if (br?.label && !endereco) {
-      const n = await geocodeNominatim(br.label + " Brasil");
-      if (n?.lat) return { ...n, label: br.label };
+    const via = await viaCep(cep);
+    if (via?.query) {
+      const n = await geocodeNominatim(via.query);
+      if (n?.lat) return { ...n, label: via.label };
     }
   }
-  if (endereco) {
-    const n = await geocodeNominatim(endereco + (cep ? " " + cep : "") + " Brasil");
-    if (n?.lat) return n;
-  }
-  if (cep) {
-    const n = await geocodeNominatim(cep + " Brasil");
-    if (n?.lat) return n;
-  }
   return null;
+}
+
+async function origemLoja(env) {
+  const g = await geocodeGoogle(env, LOJA.endereco);
+  if (g?.lat) return { ...g, cep: LOJA.cep };
+  return { lat: LOJA.lat, lng: LOJA.lng, label: LOJA.endereco, cep: LOJA.cep };
 }
 
 async function calcularDistancia(env, cep, endereco) {
@@ -186,7 +179,7 @@ async function calcularDistancia(env, cep, endereco) {
   if (!dest?.lat) {
     return { ok: false, erro: "Nao foi possivel localizar este CEP ou endereco." };
   }
-  const origem = { lat: LOJA.lat, lng: LOJA.lng, label: LOJA.endereco };
+  const origem = await origemLoja(env);
   const linha = haversineKm(origem.lat, origem.lng, dest.lat, dest.lng);
   let km = await distanciaGoogle(env, origem, dest);
   let fonte = "google";
@@ -202,7 +195,7 @@ async function calcularDistancia(env, cep, endereco) {
     kmLinha: Math.round(linha * 10) / 10,
     atende: km <= LIMITE_KM,
     limiteKm: LIMITE_KM,
-    origem: { ...origem, cep: LOJA.cep },
+    origem,
     destino: dest,
     fonte
   };
