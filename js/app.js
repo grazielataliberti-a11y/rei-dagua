@@ -118,6 +118,45 @@ function soDigitosCep(v) {
   return String(v || "").replace(/\D/g, "").slice(0, 8);
 }
 
+function montarEnderecoViaCep(data) {
+  return [
+    data.logradouro,
+    data.bairro,
+    [data.localidade, data.uf].filter(Boolean).join(" - ")
+  ].filter(Boolean).join(", ");
+}
+
+async function buscarViaCep(cep) {
+  const digits = soDigitosCep(cep);
+  if (digits.length !== 8) return null;
+  const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+  const data = await res.json();
+  if (!data || data.erro) return null;
+  return { ...data, label: montarEnderecoViaCep(data) };
+}
+
+function estadoDistancia() {
+  return {
+    modo: "cep",
+    cep: "",
+    endereco: "",
+    enderecoViaCep: "",
+    resultado: null,
+    ...(state.distancia || {})
+  };
+}
+
+function lerCamposDistancia() {
+  const atual = estadoDistancia();
+  const preview = document.getElementById("dist-endereco-preview");
+  return {
+    ...atual,
+    cep: document.getElementById("dist-cep")?.value ?? atual.cep,
+    endereco: document.getElementById("dist-endereco")?.value ?? atual.endereco,
+    enderecoViaCep: preview ? preview.textContent.trim() : atual.enderecoViaCep
+  };
+}
+
 function mascaraTelefone(v) {
   const d = String(v || "").replace(/\D/g, "").slice(0, 11);
   if (d.length <= 10) {
@@ -570,6 +609,7 @@ function setView(view, extra = {}) {
 }
 
 function render() {
+  destruirMapaDistancia();
   const root = document.getElementById("conteudo");
   const views = {
     inicio: viewInicio,
@@ -625,48 +665,192 @@ function figuraDistancia(ok) {
   `;
 }
 
+function urlGooglePercurso(r) {
+  return (
+    "https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=" +
+    encodeURIComponent((r.origem?.lat || "") + "," + (r.origem?.lng || "")) +
+    "&destination=" +
+    encodeURIComponent((r.destino?.lat || "") + "," + (r.destino?.lng || ""))
+  );
+}
+
+function urlEmbedPercurso(r) {
+  const o = Number(r.origem.lat) + "," + Number(r.origem.lng);
+  const d = Number(r.destino.lat) + "," + Number(r.destino.lng);
+  const key = window.REIDAGUA_MAPS_EMBED_KEY;
+  if (key) {
+    return (
+      "https://www.google.com/maps/embed/v1/directions?key=" +
+      encodeURIComponent(key) +
+      "&origin=" + encodeURIComponent(o) +
+      "&destination=" + encodeURIComponent(d) +
+      "&mode=driving&language=pt-BR&units=metric"
+    );
+  }
+  return (
+    "https://www.google.com/maps?saddr=" + encodeURIComponent(o) +
+    "&daddr=" + encodeURIComponent(d) +
+    "&hl=pt-BR&dirflg=d&output=embed"
+  );
+}
+
 function htmlResultadoDistancia(r) {
   if (!r) return "";
   if (!r.ok) {
     return `<div class="card empty"><p>${esc(r.erro || "Não foi possível calcular a distância.")}</p></div>`;
   }
-  const maps =
-    "https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=" +
-    encodeURIComponent((r.origem?.lat || "") + "," + (r.origem?.lng || "")) +
-    "&destination=" +
-    encodeURIComponent((r.destino?.lat || "") + "," + (r.destino?.lng || ""));
+  const maps = urlGooglePercurso(r);
+  const minutos = r.minutos > 0 ? ` · cerca de ${r.minutos} min` : "";
+  const podeMapa = r.atende && r.origem?.lat && r.destino?.lat;
+  const usaEmbed = podeMapa && window.REIDAGUA_MAPS_EMBED_KEY;
+  const mapa = !podeMapa ? "" : usaEmbed
+    ? `
+      <div class="dist-mapa-wrap">
+        <p class="dist-mapa-titulo">Melhor percurso de carro</p>
+        <iframe
+          class="dist-mapa"
+          title="Melhor percurso de carro da loja até o cliente"
+          src="${esc(urlEmbedPercurso(r))}"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          allowfullscreen
+        ></iframe>
+      </div>
+    `
+    : `
+      <div class="dist-mapa-wrap">
+        <p class="dist-mapa-titulo">Melhor percurso de carro</p>
+        <div id="dist-mapa-leaflet" class="dist-mapa-leaflet"></div>
+      </div>
+    `;
   return `
     <div class="card dist-card ${r.atende ? "dist-ok" : "dist-nao"}">
       ${figuraDistancia(r.atende)}
       <div class="dist-km">${String(r.km).replace(".", ",")} km</div>
       <p class="dist-status">${r.atende ? "Dentro da área — podemos atender" : "Fora da área — acima de 5 km"}</p>
-      <p class="meta">Rota de carro pelas ruas (não a pé e não em linha reta)</p>
+      <p class="meta">${r.fonte === "google" ? "Rota de carro no Google Maps" : "Rota de carro pelas ruas"} (não a pé e não em linha reta)${minutos}</p>
       <p class="meta">Loja: Rua Itapeva, 158 — CEP 09751-120</p>
       <p class="meta">Cliente: ${esc(r.destino?.label || "—")}</p>
-      <a class="btn btn-navy" href="${maps}" target="_blank" rel="noopener">Ver rota no Google Maps</a>
+      ${mapa}
+      <a class="btn btn-navy" href="${maps}" target="_blank" rel="noopener">Abrir percurso no Google Maps</a>
     </div>
   `;
 }
 
+let mapaDistancia = null;
+let mapaDistanciaSeq = 0;
+
+function destruirMapaDistancia() {
+  mapaDistanciaSeq += 1;
+  if (mapaDistancia) {
+    mapaDistancia.remove();
+    mapaDistancia = null;
+  }
+}
+
+function pinDistancia(cor, letra) {
+  return L.divIcon({
+    className: "dist-pin",
+    html: `<span style="background:${cor}"><b>${letra}</b></span>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 28],
+    popupAnchor: [0, -28]
+  });
+}
+
+async function pontosDoPercurso(r) {
+  if (Array.isArray(r.percurso) && r.percurso.length > 1) return r.percurso;
+  const o = r.origem;
+  const d = r.destino;
+  const pontos = o.lng + "," + o.lat + ";" + d.lng + "," + d.lat;
+  const urls = [
+    "https://router.project-osrm.org/route/v1/driving/" + pontos + "?overview=full&geometries=geojson",
+    "https://routing.openstreetmap.de/routed-car/route/v1/driving/" + pontos + "?overview=full&geometries=geojson"
+  ];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url);
+      const j = await res.json();
+      const coords = j.routes?.[0]?.geometry?.coordinates;
+      if (coords?.length) return coords.map(([lng, lat]) => [lat, lng]);
+    } catch {
+      /* tenta o próximo */
+    }
+  }
+  return [[o.lat, o.lng], [d.lat, d.lng]];
+}
+
+async function mostrarPercursoNoMapa(r) {
+  const seq = ++mapaDistanciaSeq;
+  if (mapaDistancia) {
+    mapaDistancia.remove();
+    mapaDistancia = null;
+  }
+  if (!r?.ok || !r.atende || window.REIDAGUA_MAPS_EMBED_KEY) return;
+  const el = document.getElementById("dist-mapa-leaflet");
+  if (!el || typeof L === "undefined") return;
+  const pontos = await pontosDoPercurso(r);
+  if (seq !== mapaDistanciaSeq) return;
+  if (!document.getElementById("dist-mapa-leaflet")) return;
+  mapaDistancia = L.map(el, { scrollWheelZoom: false, attributionControl: true });
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap"
+  }).addTo(mapaDistancia);
+  const linha = L.polyline(pontos, { color: "#0b3d8c", weight: 5, opacity: 0.9 }).addTo(mapaDistancia);
+  L.marker([r.origem.lat, r.origem.lng], { icon: pinDistancia("#0b3d8c", "L"), title: "Loja" })
+    .addTo(mapaDistancia)
+    .bindPopup("Loja — Rua Itapeva, 158");
+  L.marker([r.destino.lat, r.destino.lng], { icon: pinDistancia("#c9a227", "C"), title: "Cliente" })
+    .addTo(mapaDistancia)
+    .bindPopup(r.destino.label || "Cliente");
+  mapaDistancia.fitBounds(linha.getBounds(), { padding: [28, 28] });
+  setTimeout(() => mapaDistancia?.invalidateSize(), 180);
+}
+
 function viewDistancia() {
-  const d = state.distancia || { cep: "", endereco: "" };
+  const d = estadoDistancia();
+  const modo = d.modo || "cep";
+  const modos = [
+    ["cep", "1. Só o CEP"],
+    ["cep-endereco", "2. CEP e endereço"],
+    ["endereco", "3. Só o endereço"]
+  ];
+  const ajudaCep = modo === "cep"
+    ? "Digite o CEP para aparecer o endereço."
+    : "Digite o CEP para preencher o endereço. Complete com o número.";
   return `
     <div class="page-head">
       <div>
         <h1>Distância</h1>
-        <p>Digite o CEP e, se possível, a rua com o número. A distância é a rota de carro até a loja (Rua Itapeva, 158 — CEP 09751-120), não a pé e não em linha reta. Até 5 km atendemos.</p>
+        <p>Escolha como informar o local. Em todos os casos a distância é a rota de carro no Google Maps até a loja (Rua Itapeva, 158 — CEP 09751-120). Até 5 km atendemos.</p>
       </div>
     </div>
     <form class="card form" id="form-distancia">
+      <div class="chips dist-modos" id="modos-distancia">
+        ${modos.map(([id, label]) => `<button type="button" class="chip ${modo === id ? "active" : ""}" data-modo-distancia="${id}">${label}</button>`).join("")}
+      </div>
       <div class="fields">
-        <div class="field">
-          <label>CEP do cliente</label>
-          <input id="dist-cep" name="cep" inputmode="numeric" placeholder="00000-000" value="${esc(d.cep || "")}" />
+        ${modo !== "endereco" ? `
+        <div class="field full">
+          <label for="dist-cep">CEP do cliente</label>
+          <input id="dist-cep" name="cep" inputmode="numeric" maxlength="9" autocomplete="postal-code" placeholder="00000-000" value="${esc(d.cep || "")}" />
+          <span class="help" id="dist-cep-status">${ajudaCep}</span>
         </div>
-        <div class="field">
-          <label>Endereço (se não tiver CEP)</label>
-          <input id="dist-endereco" name="endereco" placeholder="Rua, número, bairro" value="${esc(d.endereco || "")}" />
+        ` : ""}
+        ${modo === "cep" ? `
+        <div class="field full" id="dist-endereco-preview-wrap"${d.enderecoViaCep ? "" : " hidden"}>
+          <label>Endereço encontrado</label>
+          <p class="dist-endereco-preview" id="dist-endereco-preview">${esc(d.enderecoViaCep || "")}</p>
         </div>
+        ` : ""}
+        ${modo !== "cep" ? `
+        <div class="field full">
+          <label for="dist-endereco">${modo === "endereco" ? "Endereço completo" : "Endereço completo (além do CEP)"}</label>
+          <input id="dist-endereco" name="endereco" placeholder="Rua, número, bairro, cidade" value="${esc(d.endereco || "")}" />
+          <span class="help">${modo === "endereco" ? "Informe rua, número, bairro e cidade. Sem CEP." : "Confira o endereço do CEP e complete com o número da casa."}</span>
+        </div>
+        ` : ""}
       </div>
       <div class="actions">
         <button class="btn btn-gold" type="submit">Calcular distância</button>
@@ -1721,25 +1905,125 @@ function bindView() {
   });
   const formDistancia = document.getElementById("form-distancia");
   if (formDistancia) {
-    const cepCampo = document.getElementById("dist-cep");
-    cepCampo?.addEventListener("input", () => {
-      cepCampo.value = mascaraCep(cepCampo.value);
+    document.querySelectorAll("[data-modo-distancia]").forEach((el) => {
+      el.addEventListener("click", () => {
+        const d = lerCamposDistancia();
+        const modo = el.dataset.modoDistancia;
+        if (modo === "cep-endereco" && !String(d.endereco || "").trim() && d.enderecoViaCep) {
+          d.endereco = d.enderecoViaCep;
+        }
+        state.distancia = { ...d, modo };
+        render();
+      });
     });
-    formDistancia.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const cep = soDigitosCep(document.getElementById("dist-cep")?.value);
-      const endereco = String(document.getElementById("dist-endereco")?.value || "").trim();
-      state.distancia = {
-        cep: mascaraCep(cep),
-        endereco,
-        resultado: null
-      };
-      if (cep.length !== 8 && !endereco) {
-        toast("Informe o CEP ou o endereço do cliente");
+    const cepCampo = document.getElementById("dist-cep");
+    const statusCep = document.getElementById("dist-cep-status");
+    const preview = document.getElementById("dist-endereco-preview");
+    const previewWrap = document.getElementById("dist-endereco-preview-wrap");
+    const enderecoCampo = document.getElementById("dist-endereco");
+    let buscaCepAtual = 0;
+    const setStatus = (msg, tipo) => {
+      if (!statusCep) return;
+      statusCep.textContent = msg;
+      statusCep.classList.toggle("ok", tipo === "ok");
+      statusCep.classList.toggle("erro", tipo === "erro");
+    };
+    const mostrarEnderecoCep = (label) => {
+      const d = estadoDistancia();
+      const anterior = String(d.enderecoViaCep || "").trim();
+      state.distancia = { ...d, enderecoViaCep: label || "" };
+      if (preview) preview.textContent = label || "";
+      if (previewWrap) previewWrap.hidden = !label;
+      if (!enderecoCampo) return;
+      const atual = enderecoCampo.value.trim();
+      if (!label) {
+        if (atual && atual === anterior) enderecoCampo.value = "";
         return;
       }
+      if (!atual || atual === anterior) enderecoCampo.value = label;
+    };
+    const preencherEnderecoCep = async () => {
+      const digits = soDigitosCep(cepCampo?.value);
+      if (digits.length !== 8) {
+        mostrarEnderecoCep("");
+        setStatus(estadoDistancia().modo === "cep-endereco"
+          ? "Digite o CEP para preencher o endereço. Complete com o número."
+          : "Digite o CEP para aparecer o endereço.", "");
+        return;
+      }
+      const ordem = ++buscaCepAtual;
+      setStatus("Buscando endereço…", "");
+      try {
+        const data = await buscarViaCep(digits);
+        if (ordem !== buscaCepAtual) return;
+        if (!data) {
+          mostrarEnderecoCep("");
+          setStatus("CEP não encontrado. Tente outro CEP ou use o endereço completo.", "erro");
+          return;
+        }
+        mostrarEnderecoCep(data.label);
+        setStatus(estadoDistancia().modo === "cep-endereco"
+          ? "Endereço preenchido. Complete com o número da casa."
+          : "Endereço encontrado. Pode calcular a distância.", "ok");
+      } catch {
+        if (ordem !== buscaCepAtual) return;
+        setStatus("Não foi possível consultar o CEP. Verifique a internet.", "erro");
+      }
+    };
+    cepCampo?.addEventListener("input", () => {
+      cepCampo.value = mascaraCep(cepCampo.value);
+      if (soDigitosCep(cepCampo.value).length === 8) preencherEnderecoCep();
+      else {
+        mostrarEnderecoCep("");
+        setStatus(estadoDistancia().modo === "cep-endereco"
+          ? "Digite o CEP para preencher o endereço. Complete com o número."
+          : "Digite o CEP para aparecer o endereço.", "");
+      }
+    });
+    cepCampo?.addEventListener("blur", preencherEnderecoCep);
+    if (cepCampo && soDigitosCep(cepCampo.value).length === 8 && !estadoDistancia().enderecoViaCep) {
+      preencherEnderecoCep();
+    }
+    formDistancia.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const d = lerCamposDistancia();
+      const modo = d.modo || "cep";
+      const cep = soDigitosCep(d.cep);
+      const enderecoDigitado = String(d.endereco || "").trim();
+      const enderecoViaCep = String(d.enderecoViaCep || "").trim();
+      let endereco = "";
+      if (modo === "cep") {
+        if (cep.length !== 8) {
+          toast("Informe o CEP do cliente");
+          return;
+        }
+        endereco = enderecoViaCep;
+      } else if (modo === "cep-endereco") {
+        if (cep.length !== 8) {
+          toast("Informe o CEP do cliente");
+          return;
+        }
+        if (!enderecoDigitado) {
+          toast("Informe o endereço completo além do CEP");
+          return;
+        }
+        endereco = enderecoDigitado;
+      } else if (!enderecoDigitado) {
+        toast("Informe o endereço completo do cliente");
+        return;
+      } else {
+        endereco = enderecoDigitado;
+      }
+      state.distancia = {
+        ...d,
+        modo,
+        cep: mascaraCep(cep),
+        endereco: enderecoDigitado,
+        enderecoViaCep,
+        resultado: null
+      };
       const caixa = document.getElementById("resultado-distancia");
-      if (caixa) caixa.innerHTML = `<div class="card empty"><p>Calculando distância…</p></div>`;
+      if (caixa) caixa.innerHTML = `<div class="card empty"><p>Calculando distância no Google Maps…</p></div>`;
       const qs = new URLSearchParams();
       if (cep.length === 8) qs.set("cep", cep);
       if (endereco) qs.set("endereco", endereco);
@@ -1747,7 +2031,9 @@ function bindView() {
         const res = await fetch(apiUrl() + "/api/distancia?" + qs.toString(), { headers: apiHeaders() });
         const json = await res.json();
         state.distancia.resultado = json;
+        destruirMapaDistancia();
         if (caixa) caixa.innerHTML = htmlResultadoDistancia(json);
+        mostrarPercursoNoMapa(json);
         if (!json.ok) toast(json.erro || "Não foi possível calcular");
       } catch {
         toast("Não foi possível calcular a distância");
@@ -2281,6 +2567,9 @@ function bindView() {
     };
     reader.readAsText(file);
   });
+  if (state.view === "distancia") {
+    mostrarPercursoNoMapa(estadoDistancia().resultado);
+  }
 }
 
 function init() {

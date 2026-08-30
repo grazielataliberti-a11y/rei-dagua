@@ -130,19 +130,79 @@ async function distanciaGoogle(env, origem, dest) {
   return el.distance.value / 1000;
 }
 
-async function distanciaOsrm(origem, dest) {
+function decodePolyline(encoded) {
+  const pts = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+  while (index < encoded.length) {
+    let b;
+    let shift = 0;
+    let result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+    pts.push([lat / 1e5, lng / 1e5]);
+  }
+  return pts;
+}
+
+async function rotaGoogle(env, origem, dest) {
+  const key = env.GOOGLE_MAPS_KEY;
+  if (!key) return null;
+  const url =
+    "https://maps.googleapis.com/maps/api/directions/json?language=pt-BR&region=br&mode=driving&alternatives=false&origin=" +
+    encodeURIComponent(origem.lat + "," + origem.lng) +
+    "&destination=" +
+    encodeURIComponent(dest.lat + "," + dest.lng) +
+    "&key=" +
+    encodeURIComponent(key);
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const j = await res.json();
+  const route = j.routes?.[0];
+  const leg = route?.legs?.[0];
+  if (!leg?.distance?.value) return null;
+  const poly = route.overview_polyline?.points;
+  return {
+    km: leg.distance.value / 1000,
+    minutos: Math.round((leg.duration?.value || 0) / 60),
+    percurso: poly ? decodePolyline(poly) : null,
+    fonte: "google"
+  };
+}
+
+async function rotaOsrm(origem, dest) {
   const pontos = origem.lng + "," + origem.lat + ";" + dest.lng + "," + dest.lat;
   const urls = [
-    "https://router.project-osrm.org/route/v1/driving/" + pontos + "?overview=false",
-    "https://routing.openstreetmap.de/routed-car/route/v1/driving/" + pontos + "?overview=false"
+    "https://router.project-osrm.org/route/v1/driving/" + pontos + "?overview=full&geometries=geojson",
+    "https://routing.openstreetmap.de/routed-car/route/v1/driving/" + pontos + "?overview=full&geometries=geojson"
   ];
   for (const url of urls) {
     try {
       const res = await fetch(url, { headers: UA });
       if (!res.ok) continue;
       const j = await res.json();
-      const m = j.routes?.[0]?.distance;
-      if (m != null) return m / 1000;
+      const route = j.routes?.[0];
+      if (route?.distance == null) continue;
+      const coords = route.geometry?.coordinates || [];
+      return {
+        km: route.distance / 1000,
+        minutos: Math.round((route.duration || 0) / 60),
+        percurso: coords.map(([lng, lat]) => [lat, lng]),
+        fonte: "rota"
+      };
     } catch {
       /* tenta o próximo servidor */
     }
@@ -150,16 +210,28 @@ async function distanciaOsrm(origem, dest) {
   return null;
 }
 
+function cepFormatado(cep) {
+  const d = soCep(cep);
+  if (d.length !== 8) return "";
+  return d.slice(0, 5) + "-" + d.slice(5);
+}
+
 async function localizar(env, cep, endereco) {
-  const texto = [endereco, cep ? "CEP " + cep : ""].filter(Boolean).join(", ");
-  const g = await geocodeGoogle(env, texto || cep);
+  let extra = String(endereco || "").trim();
+  let via = null;
+  if (cep && !extra) {
+    via = await viaCep(cep);
+    if (via?.query) extra = via.label || via.query;
+  }
+  const texto = [extra, cepFormatado(cep)].filter(Boolean).join(", ");
+  const g = await geocodeGoogle(env, texto || extra || cep);
   if (g?.lat) return g;
-  if (endereco) {
-    const n = await geocodeNominatim(endereco + (cep ? ", " + cep : "") + ", Brasil");
+  if (extra) {
+    const n = await geocodeNominatim(extra + (cep ? ", " + cep : "") + ", Brasil");
     if (n?.lat) return n;
   }
   if (cep) {
-    const via = await viaCep(cep);
+    via = via || await viaCep(cep);
     if (via?.query) {
       const n = await geocodeNominatim(via.query);
       if (n?.lat) return { ...n, label: via.label };
@@ -181,23 +253,38 @@ async function calcularDistancia(env, cep, endereco) {
   }
   const origem = await origemLoja(env);
   const linha = haversineKm(origem.lat, origem.lng, dest.lat, dest.lng);
-  let km = await distanciaGoogle(env, origem, dest);
-  let fonte = "google";
-  if (km == null) {
-    km = await distanciaOsrm(origem, dest);
-    fonte = km == null ? "linha" : "rota";
+  let rota = await rotaGoogle(env, origem, dest);
+  if (!rota) {
+    const kmGoogle = await distanciaGoogle(env, origem, dest);
+    const osrm = await rotaOsrm(origem, dest);
+    if (kmGoogle != null) {
+      rota = {
+        km: kmGoogle,
+        minutos: osrm?.minutos || null,
+        percurso: osrm?.percurso || null,
+        fonte: "google"
+      };
+    } else {
+      rota = osrm;
+    }
   }
+  let km = rota?.km;
   if (km == null) km = linha;
   km = Math.round(km * 10) / 10;
+  const percurso = (rota?.percurso && rota.percurso.length > 1)
+    ? rota.percurso
+    : [[origem.lat, origem.lng], [dest.lat, dest.lng]];
   return {
     ok: true,
     km,
     kmLinha: Math.round(linha * 10) / 10,
+    minutos: rota?.minutos || null,
     atende: km <= LIMITE_KM,
     limiteKm: LIMITE_KM,
     origem,
     destino: dest,
-    fonte
+    percurso,
+    fonte: rota?.fonte || "linha"
   };
 }
 

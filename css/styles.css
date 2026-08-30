@@ -358,6 +358,52 @@ input:focus, select:focus, textarea:focus {
 .dist-nao .dist-status { color: var(--danger); }
 .dist-card .meta { margin: 0; }
 .dist-card .btn { margin-top: 6px; }
+.dist-modos { margin: 0 0 4px; }
+.dist-endereco-preview {
+  margin: 0;
+  padding: 12px 14px;
+  background: #f3f8ff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-weight: 600;
+  color: var(--navy-deep);
+}
+.dist-mapa-wrap {
+  width: 100%;
+  margin-top: 4px;
+}
+.dist-mapa-titulo {
+  margin: 4px 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--navy-deep);
+}
+.dist-mapa,
+.dist-mapa-leaflet {
+  width: 100%;
+  height: 320px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #e8eef5;
+}
+.dist-pin {
+  background: transparent;
+  border: 0;
+}
+.dist-pin span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(7, 39, 92, 0.35);
+}
+.dist-pin span b {
+  transform: rotate(45deg);
+  font: 700 12px/1 "DM Sans", sans-serif;
+}
 
 .form { display: grid; gap: 12px; }
 .fields { display: grid; gap: 12px; grid-template-columns: repeat(2, 1fr); }
