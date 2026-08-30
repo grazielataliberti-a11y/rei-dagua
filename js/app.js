@@ -748,6 +748,24 @@ function destruirMapaDistancia() {
   }
 }
 
+function garantirLeaflet() {
+  if (typeof L !== "undefined") return Promise.resolve(true);
+  return new Promise((resolve) => {
+    if (!document.getElementById("leaflet-css")) {
+      const css = document.createElement("link");
+      css.id = "leaflet-css";
+      css.rel = "stylesheet";
+      css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(css);
+    }
+    const s = document.createElement("script");
+    s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.body.appendChild(s);
+  });
+}
+
 function pinDistancia(cor, letra) {
   return L.divIcon({
     className: "dist-pin",
@@ -788,7 +806,9 @@ async function mostrarPercursoNoMapa(r) {
   }
   if (!r?.ok || !r.atende || window.REIDAGUA_MAPS_EMBED_KEY) return;
   const el = document.getElementById("dist-mapa-leaflet");
-  if (!el || typeof L === "undefined") return;
+  if (!el) return;
+  const pronto = await garantirLeaflet();
+  if (!pronto || typeof L === "undefined") return;
   const pontos = await pontosDoPercurso(r);
   if (seq !== mapaDistanciaSeq) return;
   if (!document.getElementById("dist-mapa-leaflet")) return;
@@ -2028,7 +2048,13 @@ function bindView() {
       if (cep.length === 8) qs.set("cep", cep);
       if (endereco) qs.set("endereco", endereco);
       try {
-        const res = await fetch(apiUrl() + "/api/distancia?" + qs.toString(), { headers: apiHeaders() });
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 25000);
+        const res = await fetch(apiUrl() + "/api/distancia?" + qs.toString(), {
+          headers: apiHeaders(),
+          signal: ctrl.signal
+        });
+        clearTimeout(t);
         const json = await res.json();
         state.distancia.resultado = json;
         destruirMapaDistancia();

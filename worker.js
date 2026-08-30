@@ -246,6 +246,27 @@ async function origemLoja(env) {
   return { lat: LOJA.lat, lng: LOJA.lng, label: LOJA.endereco, cep: LOJA.cep };
 }
 
+async function distanciaGoogleTexto(env, destTexto) {
+  const key = env.GOOGLE_MAPS_KEY;
+  if (!key || !destTexto) return null;
+  const url =
+    "https://maps.googleapis.com/maps/api/distancematrix/json?units=metric&language=pt-BR&region=br&mode=driving" +
+    "&origins=" + encodeURIComponent(LOJA.endereco) +
+    "&destinations=" + encodeURIComponent(destTexto) +
+    "&key=" + encodeURIComponent(key);
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const j = await res.json();
+  const el = j.rows?.[0]?.elements?.[0];
+  if (el?.status !== "OK" || el.distance?.value == null) return null;
+  return {
+    km: el.distance.value / 1000,
+    minutos: Math.round((el.duration?.value || 0) / 60),
+    originLabel: j.origin_addresses?.[0] || LOJA.endereco,
+    destLabel: j.destination_addresses?.[0] || destTexto
+  };
+}
+
 async function calcularDistancia(env, cep, endereco) {
   const dest = await localizar(env, cep, endereco);
   if (!dest?.lat) {
@@ -253,7 +274,11 @@ async function calcularDistancia(env, cep, endereco) {
   }
   const origem = await origemLoja(env);
   const linha = haversineKm(origem.lat, origem.lng, dest.lat, dest.lng);
-  let rota = await rotaGoogle(env, origem, dest);
+  const destTexto = [endereco || dest.label, cepFormatado(cep)].filter(Boolean).join(", ");
+  const googleTxt = await distanciaGoogleTexto(env, destTexto);
+  let rota = googleTxt
+    ? { km: googleTxt.km, minutos: googleTxt.minutos, fonte: "google", percurso: null }
+    : await rotaGoogle(env, origem, dest);
   if (!rota) {
     const kmGoogle = await distanciaGoogle(env, origem, dest);
     const osrm = await rotaOsrm(origem, dest);
